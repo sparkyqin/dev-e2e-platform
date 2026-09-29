@@ -25,13 +25,14 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<MidTab>('session')
-  const [focusPath, setFocusPath] = useState<string | null>(null)
+  /** 看板产物卡 → 材料页的焦点请求；nonce 保证重复点击同一产物也能重新打开（同值 bail-out 规避） */
+  const [focus, setFocus] = useState<{ path: string | null; nonce: number }>({ path: null, nonce: 0 })
   const lastSeqRef = useRef(0)
   const detailTimer = useRef<number | null>(null)
 
-  /** 看板产物卡 → 材料页直达（切页签 + 打开该产物） */
-  const openArtifact = useCallback((path: string): void => {
-    setFocusPath(path)
+  /** 看板产物卡 → 材料页直达（切页签 + 打开该产物）；path=null 表示只切页签看全量列表（「+N 更多」入口） */
+  const openArtifact = useCallback((path: string | null): void => {
+    setFocus((f) => ({ path, nonce: f.nonce + 1 }))
     setTab('materials')
   }, [])
 
@@ -209,7 +210,7 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
             <SessionStream taskId={taskId} state={state} events={events} connected={connected} />
           ) : (
             <div className="materials-wrap">
-              <ArtifactsPanel taskId={taskId} detail={detail} refreshDetail={() => fetchDetail()} focusPath={focusPath} />
+              <ArtifactsPanel taskId={taskId} detail={detail} refreshDetail={() => fetchDetail()} focus={focus} />
             </div>
           )}
         </section>

@@ -22,7 +22,8 @@ import { fmtBytes, fmtTime } from '../format'
 interface Props {
   state: TaskState
   events: SemanticEvent[]
-  onOpenArtifact: (path: string) => void
+  /** 打开指定产物（切材料页+展开查看器）；传 null = 只切材料页看全量列表（「+N 更多」入口） */
+  onOpenArtifact: (path: string | null) => void
 }
 
 const ACTION_LABEL: Record<GateAction, string> = {
@@ -163,7 +164,7 @@ export default function PipelineBoard({ state, events, onOpenArtifact }: Props):
                     </button>
                   ))}
                   {arts.length > 3 && (
-                    <button className="pipe-more" onClick={() => onOpenArtifact(arts[3].path)} title={arts.slice(3).map((a) => a.path).join('\n')}>
+                    <button className="pipe-more" onClick={() => onOpenArtifact(null)} title={`点击到「材料与批注」查看该阶段全部产物：\n${arts.map((a) => a.path).join('\n')}`}>
                       +{arts.length - 3} 更多…
                     </button>
                   )}
@@ -219,7 +220,7 @@ export default function PipelineBoard({ state, events, onOpenArtifact }: Props):
         onClick={toggle}
         title={expanded ? '收起看板（紧凑一行）' : '展开任务看板（列=阶段 · 卡=产物 · 门足迹）'}
       >
-        {expanded ? '⊟' : '▤'}
+        {expanded ? '⊟ 收起' : '▤ 展开看板'}
       </button>
     </div>
   )

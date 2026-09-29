@@ -16,7 +16,7 @@ import { fmtBytes, fmtTime, stageShort } from '../format'
 
 const PARTITIONS: Partition[] = ['delivery', 'process', 'knowledge']
 
-export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPath }: { taskId: string; detail: TaskDetail; refreshDetail: () => Promise<void>; focusPath?: string | null }): React.JSX.Element {
+export default function ArtifactsPanel({ taskId, detail, refreshDetail, focus }: { taskId: string; detail: TaskDetail; refreshDetail: () => Promise<void>; focus?: { path: string | null; nonce: number } }): React.JSX.Element {
   const { me, pushToast } = useApp()
   const [openPath, setOpenPath] = useState<string | null>(null)
   const [content, setContent] = useState<string | null>(null)
@@ -43,10 +43,10 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
     if (openPath) void load(openPath)
   }, [openPath, load])
 
-  // 任务看板产物卡直达：外部 focusPath 播种打开（点击看板卡 → 材料页自动展开该产物）
+  // 任务看板产物卡直达：外部 focus 播种打开（nonce 保证重复点击同一产物也重新打开）
   useEffect(() => {
-    if (focusPath) setOpenPath(focusPath)
-  }, [focusPath])
+    if (focus?.path) setOpenPath(focus.path)
+  }, [focus])
 
   const annotationsFor = (path: string): Annotation[] => detail.annotations.filter((a) => a.artifactPath === path)
 

@@ -789,16 +789,17 @@ a { color: var(--brand); text-decoration: none; }
 .board-peek-foot .hint { flex: 1; }
 
 /* ---------- 任务看板（TaskView 顶栏 · multica 式管线看板，默认紧凑一行、按需展开） ---------- */
-.pipeline-wrap { position: relative; padding-right: 30px; }
+.pipeline-wrap { position: relative; padding-right: 92px; }
 .pipeline-board {
   display: flex; gap: 8px; padding: 6px 0 10px; overflow-x: auto; overflow-y: hidden;
   scrollbar-width: thin;
 }
 .pipe-toggle {
   position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-  width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line-2);
-  background: var(--panel); color: var(--ink-2); font-size: 13px; line-height: 1;
-  display: grid; place-items: center; box-shadow: 0 1px 2px rgba(23,30,46,0.06);
+  height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-2);
+  background: var(--panel); color: var(--ink-2); font-size: 12px; line-height: 1;
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(23,30,46,0.06);
 }
 .pipe-toggle:hover { color: var(--brand); border-color: var(--brand); }
 
