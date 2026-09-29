@@ -1,7 +1,7 @@
 import path from 'node:path'
 import type { Playbook } from '@ai-platform/shared'
 import { DEFAULT_REVIEW_DIMENSIONS } from '@ai-platform/shared'
-import { ensureDir, readJson, writeJson } from '../domain/util.js'
+import { ensureDir, readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * 流程模板（附录 E · 四层扩展机制：流程模板）
@@ -79,7 +79,7 @@ export class PlaybookRegistry {
     // 内置模板落盘为团队资产（可编辑副本）
     for (const pb of [DEFAULT_PLAYBOOK, STRICT_PLAYBOOK, FAST_PLAYBOOK]) {
       const file = path.join(this.dir, `${pb.id}.json`)
-      const existing = await readJson<Playbook>(file)
+      const existing = await readJsonTolerant<Playbook>(file)
       if (!existing) await writeJson(file, pb)
     }
     await this.reload()
@@ -90,7 +90,7 @@ export class PlaybookRegistry {
     try {
       const files = await readdir(this.dir)
       for (const f of files.filter((x) => x.endsWith('.json'))) {
-        const pb = await readJson<Playbook>(path.join(this.dir, f))
+        const pb = await readJsonTolerant<Playbook>(path.join(this.dir, f))
         if (pb?.id) this.cache.set(pb.id, pb)
       }
     } catch {

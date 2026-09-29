@@ -7,11 +7,53 @@
  * - 接管 / 恢复自动：安全钮常驻（过程可接管铁律）
  * - AR 子任务 / AR 谱系 / 待追认：按需出现
  */
-import type { TaskDetail, TaskState } from '@ai-platform/shared'
+import { useState } from 'react'
+import type { PendingConfirmation, TaskDetail, TaskState } from '@ai-platform/shared'
 import { STAGES } from '@ai-platform/shared'
 import { api } from '../api'
 import { useApp } from '../store'
 import { HEALTH_META, SCENARIO_LABEL, STATUS_META, fmtTime, stageLabel } from '../format'
+
+/** 待追认表单：给出正式事实答案（假设仅是推进依据，不作数） */
+function PendingConfirmForm({ taskId, pc, onResolved }: { taskId: string; pc: PendingConfirmation; onResolved: (st: TaskState) => void }): React.JSX.Element {
+  const { me, pushToast } = useApp()
+  const [answer, setAnswer] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (): Promise<void> => {
+    if (!answer.trim()) {
+      pushToast('请填写确认后的事实答案', 'warn')
+      return
+    }
+    setBusy(true)
+    try {
+      const st = await api.resolvePending(taskId, pc.id, { finalAnswer: answer.trim(), asUserId: me.userId })
+      onResolved(st)
+      pushToast('已追认（事实已落决策记录）', 'ok')
+    } catch (e) {
+      pushToast(`追认失败：${(e as Error).message}`, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="pc-form">
+      <input
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="确认后的事实答案（将落决策记录）"
+        disabled={busy}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+        }}
+      />
+      <button className="btn primary sm" onClick={() => void submit()} disabled={busy}>
+        {busy ? '提交中…' : '追认'}
+      </button>
+    </div>
+  )
+}
 
 export default function TaskRail({
   state,
@@ -236,7 +278,7 @@ export default function TaskRail({
                 {pc.resolvedAt ? (
                   <div className="pc-res">已追认：{pc.finalAnswer}（{pc.resolvedBy} · {fmtTime(pc.resolvedAt)}）</div>
                 ) : (
-                  <div className="pc-res wait">未追认</div>
+                  <PendingConfirmForm taskId={state.taskId} pc={pc} onResolved={onChanged} />
                 )}
               </li>
             ))}

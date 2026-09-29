@@ -54,8 +54,11 @@ export class KnowledgeBase {
   }): Promise<{ text: string; summary: InjectionSummary }> {
     const keywords = [...new Set([...tokenize(opts.requirementText), ...tokenize(opts.module), ...tokenize(opts.repo)])]
     const candidates = await this.listDocs(opts.repo)
-    const scored = candidates
-      .map((doc) => ({ doc, score: scoreDoc(doc, keywords) }))
+    const scored = (
+      await Promise.all(
+        candidates.map(async (doc) => ({ doc, score: await scoreDoc(doc, keywords) })),
+      )
+    )
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 4)
@@ -102,11 +105,14 @@ function tokenize(s: string): string[] {
     .filter((t) => t.length >= 2)
 }
 
-function scoreDoc(doc: KnowledgeDoc, keywords: string[]): number {
+/** 打分：标题命中权重最高，正文参与计数（旧实现只看标题/路径——正文里的关键词全部漏检） */
+async function scoreDoc(doc: KnowledgeDoc, keywords: string[]): Promise<number> {
   let score = 0
+  const body = (await readText(doc.path)) ?? ''
   for (const kw of keywords) {
     if (doc.title.includes(kw)) score += 3
     if (doc.path.includes(kw)) score += 1
+    if (body.includes(kw)) score += 1
   }
   return score
 }

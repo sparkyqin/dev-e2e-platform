@@ -24,6 +24,8 @@ export interface ArtifactMeta {
   stage: StageId
   /** 当前主权角色（非主权方只读 + 批注） */
   sovereignRole: string
+  /** 内容指纹（sha256 前 16 位；变更检测用——同字节数不同内容也能识别） */
+  contentHash?: string
 }
 
 export interface AnnotationReply {

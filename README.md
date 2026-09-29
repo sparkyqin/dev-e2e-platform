@@ -1,15 +1,15 @@
 # AI 研发平台 —— 需求一句话到代码合入
 
-支撑研发人员需求 E2E：**一句话需求 → 澄清 → 架构 → 功能设计 → 测试设计 → 人工审核 →（AR 拆分）AI 写码 → 多维验证 → MR 监听 → 合入**。
-以 9 阶段主干 + 门禁体系 + 语义事件流 + AR 级并行为核心的公共 Agent 平台，实现《场景分析.md》全部 10 个业务场景与研发作业流（架构师/TSE 角色落位、TTM 度量、全流程追溯）。
+支撑研发人员需求 E2E：**一句话需求 → 澄清 → 架构 → 功能设计 → 测试设计 → 评审放行 →（AR 拆分）AI 写码 → 多维验证 → MR 监听 → 合入**。
+以 6 段主干（v2）+ 门禁体系 + 语义事件流 + AR 级并行为核心的公共 Agent 平台，实现《场景分析.md》全部 10 个业务场景与研发作业流（架构师/TSE 角色落位、TTM 度量、全流程追溯）。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  会话厅（apps/web）        任务工作台（apps/web）                  │
-│  任务卡片/度量面板/通知     三栏：材料 | 会话流+阶段轨 | 决策卡+MR   │
+│  任务卡片/度量面板/通知     两栏：动态/材料/看板 | 决策卡+MR+信息    │
 ├─────────────────────────────────────────────────────────────────┤
-│  L4 交互层   apps/server/src/api      REST 27 路由 + SSE 实时流   │
-│  L3 编排层   orchestrator/            9 阶段 worker·门·调度·监听   │
+│  L4 交互层   apps/server/src/api      REST 35 路由 + SSE 实时流   │
+│  L3 编排层   orchestrator/            6 段 worker·门·调度·监听     │
 │             + subtasks.ts            AR 并行（拆分/派发/聚合验收） │
 │  L2 领域层   domain/                  状态机·事件流·健康·存储      │
 │  L1 运行时   runtime/ + engine/       git·MR·通知·度量 + 引擎适配  │
@@ -19,21 +19,20 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 研发作业流（9 阶段主干）
+## 研发作业流（v2 六段主干）
 
-| 阶段 | 主笔（AI） | 交付物 | 门（拍板人） |
-|------|-----------|--------|-------------|
-| intake 需求接单 | 平台 | 存量基线 / 绿地脚手架 | — |
-| clarify 需求澄清 | 引擎 | IR→SR→AR 三级分解 | 事实门（需求方） |
-| architecture 架构 | 引擎 | `delivery/architecture.md`（架构分析/边界设计/业务流） | 事实门（架构师，缺省责任人） |
-| design 功能设计 | 引擎 | `delivery/spec.md` + `design.md` + 契约单源 + 功能 FMEA | 事实门（责任人） |
-| test-design 测试设计 | 引擎 | `delivery/test-design.md`（需求测试分析/策略/测试点） | 事实门（TSE，缺省责任人） |
-| review 人工审核 | — | 证据同屏（材料选区） | 审核门（检视人；可声明式回退 4 目标） |
-| code 执行编码 | 引擎 | 代码 + UT；AR 并行时先拆分派发 | 拆分门（责任人）/ 聚合验收门（TSE） |
-| verify 多维验证 | 引擎 | 并行评审 + Critic 终审 + 构建 + MST | 测试门（责任人） |
-| deliver 交付合入 | 引擎 | MR + 就绪证据 | 交付门（合入方，永远人工 fail-closed） |
+设计段 4（人与 AI 共创）+ 执行段 1（AI 自动 + 人审核）+ 终态 1。v1 的 intake+clarify 合并为 requirement 的段内检查点，code+verify+deliver 合并为 execute 的段内循环（编码→验证→交付），review 连拍为 test-design 出口的第二门（设计段收口）。
 
-回退边（声明式，全留痕）：code→clarify/architecture/design；verify→code；deliver→code；合入后问题→code。
+| 段 | 段内作业 | 交付物 | 出口门（拍板人） |
+|------|---------|--------|-------------|
+| requirement 需求 | 基线建立（段内检查点，双层自动校验）+ IR→SR→AR 三级分解 | `process/baseline.md`（过程区）+ 三级分解 + 决策记录 | 事实门（需求方；超时降级待追认） |
+| architecture 架构 | 架构设计 SPEC | `delivery/architecture.md`（架构分析/边界设计/业务流） | 事实门（架构师，缺省责任人） |
+| design 功能设计 | WHAT/HOW 双产物 + 契约单源 | `delivery/spec.md` + `design.md` + 契约 + 功能 FMEA | 事实门（责任人） |
+| test-design 测试设计 | 测试 SPEC（连拍：测试设计门 → 方案评审门收口设计段） | `delivery/test-design.md` | 事实门（TSE）→ 评审门（评审人，唯一拍板放行进编码） |
+| execute 执行与编码 | 段内循环：编码（自报+文件证据裁决）→ 多维评审+Critic+构建+测试 → MR 监听；AR 并行走「拆分门→子任务并行→聚合验收门」 | 代码 + UT + MST + MR + 就绪证据 | 测试门（责任人）/ 拆分门（责任人）/ 聚合验收门（TSE）/ MR 反馈决策门（责任人）/ 交付门（合入方，永远人工 fail-closed） |
+| merged 已合入 | 终态 | — | —（合入后问题仍可回退 execute） |
+
+回退边（声明式，全留痕，见 `domain/state-machine.ts`）：execute→requirement/architecture/design/test-design/execute（段内修复）；test-design→requirement/architecture/design/test-design；design→requirement/architecture；architecture→requirement；merged→execute（合入后问题）。
 
 ## 快速开始
 
@@ -41,7 +40,7 @@
 npm install            # 安装（npm workspaces monorepo）
 cp .env.example .env   # 端口 8787 / 引擎选择等
 npm run dev            # server(8787) + web(5173) 并起
-npm test               # 50 个测试全过（E2E 用 simulated 引擎）
+npm test               # 82 个测试全过（E2E 用 simulated 引擎）
 npm run typecheck      # 三包类型检查
 npm run seed           # 演示种子任务（strict 剧本；--ar-parallel=true 开 AR 并行）
 npm run build          # 生产构建（web 产物由 server 同进程托管）

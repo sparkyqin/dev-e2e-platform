@@ -23,6 +23,7 @@ import type {
   PlatformConfig,
   Playbook,
   ResumeAutoRequest,
+  ResolvePendingRequest,
   SchedulerConfig,
   SemanticEventKind,
   SessionResponse,
@@ -127,6 +128,8 @@ export const api = {
   takeover: (id: string, r: TakeoverRequest): Promise<TaskState> => req('POST', `/api/tasks/${id}/takeover`, r),
   resumeAuto: (id: string, r: ResumeAutoRequest): Promise<TaskState> => req('POST', `/api/tasks/${id}/resume-auto`, r),
   instruction: (id: string, r: InstructionRequest): Promise<TaskState> => req('POST', `/api/tasks/${id}/instruction`, r),
+  resolvePending: (id: string, confirmationId: string, r: Omit<ResolvePendingRequest, 'confirmationId'>): Promise<TaskState> =>
+    req('POST', `/api/tasks/${id}/pending-confirmations/${encodeURIComponent(confirmationId)}/resolve`, r),
 
   // ---------- MR 演示注入 ----------
 

@@ -160,6 +160,16 @@ export type InviteParticipantRequest = z.infer<typeof inviteParticipantSchema>
 export const takeoverSchema = z.object({ asUserId: z.string() })
 export type TakeoverRequest = z.infer<typeof takeoverSchema>
 
+/** 待追认追认（场景2 后半段）：事实门超时降级推进后的正式确认 */
+export const resolvePendingSchema = z.object({
+  /** 待追认项 id */
+  confirmationId: z.string().min(1),
+  /** 人工确认的事实答案（假设不作数，以人的答案为准） */
+  finalAnswer: z.string().min(1),
+  asUserId: z.string(),
+})
+export type ResolvePendingRequest = z.infer<typeof resolvePendingSchema>
+
 export const resumeAutoSchema = z.object({
   stateVersion: z.number().int().nonnegative(),
   asUserId: z.string(),

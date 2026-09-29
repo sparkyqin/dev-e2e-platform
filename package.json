@@ -2,7 +2,7 @@
   "name": "ai-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "需求到代码合入 E2E 平台 —— 以 7 阶段主干 + 门禁体系 + 语义事件流为核心的公共 Agent 平台",
+  "description": "需求到代码合入 E2E 平台 —— 以 6 段主干（v2：设计段4+执行段1+终态）+ 门禁体系 + 语义事件流为核心的公共 Agent 平台",
   "type": "module",
   "workspaces": [
     "packages/*",

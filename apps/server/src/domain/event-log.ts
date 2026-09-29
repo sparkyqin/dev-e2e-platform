@@ -9,7 +9,7 @@ import type {
   JourneyEntry,
 } from '@ai-platform/shared'
 import type { StageId } from '@ai-platform/shared'
-import { KeyedMutex, atomicWrite, nowIso, readJson } from './util.js'
+import { KeyedMutex, atomicWrite, nowIso, readJsonTolerant } from './util.js'
 
 /**
  * 语义事件流（[机-语义事件流] / [机-重启恢复]）
@@ -20,6 +20,11 @@ import { KeyedMutex, atomicWrite, nowIso, readJson } from './util.js'
  */
 
 const fileMutex = new KeyedMutex()
+
+/** 进程内 seq 缓存（file → lastSeq）：append 不再每次全量读文件解析——
+ *  事件流到几千条后旧实现写入成本 O(n²)。缓存仅在「本进程写」路径上失效（互斥保证单写者）；
+ *  文件被外部改动（如磁盘修复）的兜底：缓存 miss 时全量读重建。 */
+const seqCache = new Map<string, number>()
 
 export class EventLog {
   constructor(private file: string) {}
@@ -32,10 +37,12 @@ export class EventLog {
     payload: SemanticEventPayloadMap[K],
   ): Promise<SemanticEvent> {
     return fileMutex.run(this.file, async () => {
-      const seq = (await this.lastSeqUnsafe()) + 1
+      const cached = seqCache.get(this.file)
+      const seq = (cached !== undefined ? cached : await this.lastSeqUnsafe()) + 1
       const event: SemanticEvent = { seq, ts: nowIso(), taskId, kind, stage, actor, payload } as SemanticEvent
       await fs.mkdir(path.dirname(this.file), { recursive: true })
       await fs.appendFile(this.file, JSON.stringify(event) + '\n', 'utf8')
+      seqCache.set(this.file, seq)
       return event
     })
   }
@@ -46,6 +53,7 @@ export class EventLog {
       const lines = txt.trim().split('\n').filter(Boolean)
       if (lines.length === 0) return 0
       const last = JSON.parse(lines[lines.length - 1]) as SemanticEvent
+      seqCache.set(this.file, last.seq)
       return last.seq
     } catch {
       return 0
@@ -171,7 +179,7 @@ export interface InjectionRecord {
 }
 
 export async function loadInjections(flowDir: string): Promise<import('@ai-platform/shared').InjectionSummary[]> {
-  return (await readJson<import('@ai-platform/shared').InjectionSummary[]>(path.join(flowDir, 'injections.json'))) ?? []
+  return (await readJsonTolerant<import('@ai-platform/shared').InjectionSummary[]>(path.join(flowDir, 'injections.json'))) ?? []
 }
 
 export async function saveInjections(flowDir: string, list: import('@ai-platform/shared').InjectionSummary[]): Promise<void> {

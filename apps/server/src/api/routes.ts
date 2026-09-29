@@ -20,6 +20,7 @@ import {
   takeoverSchema,
   resumeAutoSchema,
   instructionSchema,
+  resolvePendingSchema,
   annotationSchema,
   adoptSkillSchema,
   mrEventSchema,
@@ -78,7 +79,7 @@ function paramId(req: FastifyRequest): string {
   return id
 }
 
-function paramKey(req: FastifyRequest, name: 'nid' | 'sid'): string {
+function paramKey(req: FastifyRequest, name: 'nid' | 'sid' | 'pcid'): string {
   const v = (req.params as Record<string, string | undefined>)[name] ?? ''
   if (!SAFE_KEY_RE.test(v)) throw new HttpError(400, 'bad-param', `非法参数 ${name}：${v || '(空)'}`)
   return v
@@ -262,7 +263,10 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
       }
     }
 
+    let polling = false
     const poll = async (): Promise<void> => {
+      if (polling) return // bus 触发与 700ms 定时器并发到达时只跑一个（重复读同一 afterSeq 会双发）
+      polling = true
       try {
         const events = await platform.store.eventLog(taskId).read({ afterSeq: lastSeq })
         if (events.length > 0) {
@@ -271,6 +275,8 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
         }
       } catch {
         // ignore
+      } finally {
+        polling = false
       }
     }
     await poll()
@@ -422,11 +428,24 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
     }
   })
 
+  /** 待追认追认（场景2 后半段）：事实门超时降级推进后的正式确认（写 finalAnswer + 决策记录留痕） */
+  app.post('/api/tasks/:id/pending-confirmations/:pcid/resolve', async (req, reply) => {
+    try {
+      const me = bindIdentity(req, (req.body as { asUserId?: string } | undefined)?.asUserId)
+      const body = resolvePendingSchema.parse({ ...(req.body as Record<string, unknown>), confirmationId: paramKey(req, 'pcid') })
+      return await platform.resolvePendingConfirmation(paramId(req), body.confirmationId, body.finalAnswer, me.userId)
+    } catch (err) {
+      return sendErr(app, reply, err)
+    }
+  })
+
   // ---------- MR 事件接入（真实远端 CodeHub webhook / 演示注入共用契约） ----------
 
   /**
    * 签名契约（生产）：MR_WEBHOOK_SECRET 配置后，需带 `X-Signature: sha256=<hex>`，
-   * 签名对象 = HMAC-SHA256(secret, JSON.stringify(body))（与请求体字节一致的规范 JSON）。
+   * 签名对象 = HMAC-SHA256(secret, 请求体原文字节)。原文经 rawBody 保留——
+   * 不能用 JSON.parse 后再 stringify 的结果（Unicode 转义/数字精度差异会让签名永不相等）。
+   * 兼容：无 rawBody 的调用方（如内部测试桩）按规范 JSON 字节签名。
    * DEMO_MODE 下允许免签注入（演示剧本驱动）。
    */
   app.post('/api/tasks/:id/mr/events', async (req, reply) => {
@@ -436,9 +455,11 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
       const secret = process.env.MR_WEBHOOK_SECRET
       if (secret) {
         const sig = String(req.headers['x-signature'] ?? '').replace(/^sha256=/, '')
-        const expected = createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex')
+        const rawBody = (req as FastifyRequest & { rawBody?: Buffer }).rawBody
+        const payloadBytes = rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}), 'utf8')
+        const expected = createHmac('sha256', secret).update(payloadBytes).digest('hex')
         if (sig.length !== expected.length || !timingSafeEqualStr(sig, expected)) {
-          throw new HttpError(403, 'bad-signature', 'X-Signature 校验失败（HMAC-SHA256，签名对象=规范 JSON 请求体）')
+          throw new HttpError(403, 'bad-signature', 'X-Signature 校验失败（HMAC-SHA256，签名对象=请求体原文字节）')
         }
       } else if (!auth.demoMode) {
         throw new HttpError(403, 'signature-required', '生产模式必须配置 MR_WEBHOOK_SECRET 并携带 X-Signature')
@@ -506,7 +527,14 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
   })
 
   app.post('/api/notifications/:nid/read', async (req, reply) => {
-    await platform.notifications.markRead(paramKey(req, 'nid'))
+    const me = req.user!
+    const nid = paramKey(req, 'nid')
+    // 属主校验：只能标自己的通知为已读（admin 可代操作任意）
+    const target = platform.notifications.inbox().find((n) => n.id === nid)
+    if (target && target.audience !== me.userId && !me.isAdmin) {
+      return reply.code(403).send({ error: 'forbidden', message: '只能操作本人收件箱的通知' })
+    }
+    await platform.notifications.markRead(nid)
     return { ok: true }
   })
 
@@ -575,6 +603,10 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
     try {
       const sid = paramKey(req, 'sid')
       const me = bindIdentity(req, (req.body as { asUserId?: string } | undefined)?.asUserId)
+      // 技能是全局资产（影响后续所有任务的知识注入）：采纳/驳回/下架限管理员
+      if (!me.isAdmin) {
+        throw new HttpError(403, 'admin-only', '技能库为组织级资产（影响所有任务的引擎注入）：仅管理员可采纳/驳回/下架')
+      }
       const body = adoptSkillSchema.parse(req.body ?? {})
       if (body.action === 'adopt') {
         return await platform.skills.adopt(sid, me.userId, me.name)

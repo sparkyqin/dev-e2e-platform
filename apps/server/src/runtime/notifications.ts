@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Notification, NotificationKind, NotificationPriority } from '@ai-platform/shared'
-import { newId, nowIso, readJson, writeJson } from '../domain/util.js'
+import { newId, nowIso, readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * IM 通知服务（附录 C 通道B / [机-通知合并]）
@@ -21,7 +21,7 @@ export class NotificationService {
   constructor(private file: string, private quiet: QuietHours) {}
 
   async init(): Promise<void> {
-    this.queue = (await readJson<Notification[]>(this.file)) ?? []
+    this.queue = (await readJsonTolerant<Notification[]>(this.file)) ?? []
   }
 
   async persist(): Promise<void> {

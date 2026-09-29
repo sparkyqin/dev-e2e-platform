@@ -103,23 +103,34 @@ export interface DecideInput {
   asUserId: string
 }
 
+/** 合入决策走预检快照版本（见 decideGate 注释），其余走调用方版本 */
+function gateKindOf(input: DecideInput, readiness: unknown): 'delivery-merge' | 'other' {
+  return input.action === 'merge' && readiness !== null ? 'delivery-merge' : 'other'
+}
+
 export async function decideGate(platform: Platform, taskId: string, input: DecideInput): Promise<TaskState> {
   const store = platform.store
   const log = store.eventLog(taskId)
 
-  // fail-closed 预检在 mutate 外完成（mutator 必须是同步纯函数）
+  // fail-closed 预检在 mutate 外完成（mutator 必须是同步纯函数）；
+  // 预检带 stateVersion 指纹，mutate 乐观锁校验同一版本——预检与提交之间
+  // watcher 聚合新反馈（版本已变）会被 409 拒绝，杜绝"预检时 ready、提交时已不 ready"的窗口
   let deliveryReadiness: Awaited<ReturnType<typeof platform.mergeReadiness>> | null = null
+  let readinessAtVersion: number | null = null
   {
     const cur = await store.load(taskId)
     if (cur.gate?.kind === 'delivery' && input.action === 'merge') {
       deliveryReadiness = await platform.mergeReadiness(taskId)
+      readinessAtVersion = cur.stateVersion
     }
   }
 
   const { state: after } = await store.mutate(
     taskId,
     {
-      expectedVersion: input.stateVersion,
+      // 交付门合入：乐观锁校验预检快照版本（input.stateVersion 是决策卡渲染版本，可能早于预检）；
+      // 其余决策保持调用方版本语义
+      expectedVersion: gateKindOf(input, deliveryReadiness) === 'delivery-merge' ? readinessAtVersion : input.stateVersion,
       audit: { actor: input.asUserId, actorName: input.asUserId, action: `decide-gate:${input.action}` },
     },
     (s) => {
@@ -147,7 +158,9 @@ export async function decideGate(platform: Platform, taskId: string, input: Deci
         throw new GateError('声明式回退必须指定回退目标')
       }
       if (gate.kind === 'delivery' && input.action === 'merge') {
-        // fail-closed：合入前复核就绪条件（流水线真绿 + 反馈全消化）
+        // fail-closed：合入前复核就绪条件（流水线真绿 + 反馈全消化）。
+        // expectedVersion 用预检时快照：预检后任何状态变更（新反馈聚合/事件回写）都会 409，
+        // 合入决策不可能建立在与预检不同的世界状态上
         if (!deliveryReadiness?.ready) {
           throw new GateError(`不可合入（fail-closed）：${deliveryReadiness?.blockers.join('；') ?? '就绪条件未满足'}`, 'not-ready')
         }

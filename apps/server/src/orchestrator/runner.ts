@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { existsSync } from 'node:fs'
 import type { Platform } from './platform.js'
 import { runStageWorker } from './workers.js'
 
@@ -10,6 +12,7 @@ import { runStageWorker } from './workers.js'
  *
  * 任何 worker 异常都被捕获并安全落败（不产生 unhandled rejection，不拖垮进程）；
  * 任务可能已被删除（如测试清理临时目录），此时静默退出。
+ * 真源损坏（目录在、state.json 不可解析）≠ 删除：告警留痕后退出，不静默蒸发。
  */
 
 export class TaskRunner {
@@ -40,7 +43,14 @@ export class TaskRunner {
       for (;;) {
         if (this.stopped) break
         const state = await this.platform.store.load(this.taskId).catch(() => null)
-        if (!state) break // 任务已删除（工作区回收）→ 静默退出
+        if (!state) {
+          // 区分删除（正常回收）与损坏（目录在但真源不可载——后端已告警并保全 .corrupt 侧车）
+          if (existsSync(path.dirname(this.platform.store.statePath(this.taskId)))) {
+            // eslint-disable-next-line no-console
+            console.error(`[runner] 任务 ${this.taskId} 真源不可载（损坏？）——runner 退出，等待人工修复侧车后重启恢复`)
+          }
+          break
+        }
         if (state.status !== 'running') break // 挂起（门/监听/人在控/排队）→ 释放并发槽
         if (state.stage === 'merged') break
 

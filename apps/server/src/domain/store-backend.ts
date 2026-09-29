@@ -77,7 +77,16 @@ export class FileBackend implements StorageBackend {
   }
 
   async load(taskId: string): Promise<TaskState | null> {
-    return readJson<TaskState>(this.statePath(taskId))
+    try {
+      return await readJson<TaskState>(this.statePath(taskId))
+    } catch (err) {
+      // 真源损坏 ≠ 不存在：告警一次（带侧车取证路径），返回 null 让调用方按"任务不可载"处置，
+      // 不让异常在 tick/调度链路上连环炸（runner 对 load null 已有静默退出语义，但此处已留痕）
+      const e = err as { name?: string; message?: string }
+      // eslint-disable-next-line no-console
+      console.error(`[store] 任务真源损坏（已保全原文到 .corrupt 侧车，请人工介入）：${this.statePath(taskId)} —— ${e.message}`)
+      return null
+    }
   }
 
   async save(taskId: string, state: TaskState): Promise<void> {

@@ -122,11 +122,13 @@ export class TaskStore {
     })
   }
 
-  /** 创建任务真源（不经乐观锁；与文件行为一致 = upsert） */
+  /** 创建任务真源（与文件行为一致 = upsert）；与 mutate 同锁串行——createTask 的 seq 分配→落盘窗口不可并发穿透 */
   async create(state: TaskState): Promise<TaskState> {
-    await this.backend.save(state.taskId, state)
-    this.onWrite?.(state)
-    return state
+    return this.backend.withLock(state.taskId, async () => {
+      await this.backend.save(state.taskId, state)
+      this.onWrite?.(state)
+      return state
+    })
   }
 
   /** 覆盖式保存（恢复/归档等平台内部操作，仍走串行化） */
@@ -139,11 +141,16 @@ export class TaskStore {
     })
   }
 
+  /** 可读分区白名单：引擎/平台产物三区 + 交付区源码（评审/材料同屏都要读）；.flow 真源与 .git 不可经 API 读 */
+  private static READABLE_PARTITIONS = ['process', 'delivery', 'knowledge', 'host-skills']
+
   async readArtifact(taskId: string, relPath: string): Promise<string | null> {
     const root = path.normalize(this.taskDir(taskId)) + path.sep
     const norm = path.normalize(path.join(this.taskDir(taskId), relPath))
-    // 分区白名单内才可读（防越界；带分隔符前缀，避免 task-1 匹配 task-10 的前缀歧义）
     if (!norm.startsWith(root)) return null
+    const rel = path.relative(this.taskDir(taskId), norm).split(path.sep).join('/')
+    const inPartition = TaskStore.READABLE_PARTITIONS.some((p) => rel === p || rel.startsWith(`${p}/`))
+    if (!inPartition) return null
     try {
       return await fs.readFile(norm, 'utf8')
     } catch {

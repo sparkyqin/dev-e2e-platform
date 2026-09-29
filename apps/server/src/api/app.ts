@@ -23,6 +23,23 @@ export async function buildApp(
     bodyLimit: 4 * 1024 * 1024,
   })
 
+  // 保留原始请求体字节（req.rawBody）：MR webhook 的 HMAC 签名必须作用于请求体原文，
+  // 不能用 JSON.parse 后再 stringify 的结果（转义/精度差异会让签名永不相等）
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' as const },
+    (req, body, done: (err: Error | null, res?: unknown) => void) => {
+      try {
+        const buf = body as Buffer
+        const json = buf.length === 0 ? undefined : JSON.parse(buf.toString('utf8'))
+        ;(req as import('fastify').FastifyRequest & { rawBody?: Buffer }).rawBody = buf
+        done(null, json)
+      } catch (err) {
+        done(err as Error, undefined)
+      }
+    },
+  )
+
   // ---- CORS：白名单（逗号分隔）→ DEMO_MODE 放开 → 生产同源（web 同进程托管，无需跨域） ----
   const origins = (process.env.CORS_ORIGINS ?? '')
     .split(',')

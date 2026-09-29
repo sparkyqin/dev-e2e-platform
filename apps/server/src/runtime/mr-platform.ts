@@ -1,5 +1,5 @@
 import type { MrState, PipelineRun, TriageCategory } from '@ai-platform/shared'
-import { newId, nowIso, readJson, writeJson } from '../domain/util.js'
+import { newId, nowIso, readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * 外部代码托管平台适配器（mock CodeHub，附录 C 通道C/D）
@@ -31,7 +31,7 @@ export class MrPlatform {
   constructor(private file: string) {}
 
   async init(): Promise<void> {
-    this.mrs = (await readJson<MockMr[]>(this.file)) ?? []
+    this.mrs = (await readJsonTolerant<MockMr[]>(this.file)) ?? []
   }
 
   private async persist(): Promise<void> {

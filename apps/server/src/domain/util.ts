@@ -16,25 +16,28 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-/** 原子写文件：tmp + rename，避免半写状态（[机-文件状态机]）；Windows 下 rename 被占用时退避重试 */
+/**
+ * 原子写文件：tmp + rename，避免半写状态（[机-文件状态机]）；Windows 下 rename 被占用时退避重试。
+ * 重试耗尽后如实抛错——绝不退化为非原子直接覆写（半写的真源会让任务静默蒸发，比写失败更糟）。
+ */
 export async function atomicWrite(file: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}.tmp`
   await fs.writeFile(tmp, content, 'utf8')
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await fs.rename(tmp, file)
-      return
-    } catch (err) {
-      const e = err as NodeJS.ErrnoException
-      if (attempt >= 8 || (e.code !== 'EPERM' && e.code !== 'EACCES')) {
-        // 兜底：直接覆写（极端情况下的尽力而为，不静默丢数据）
-        await fs.writeFile(file, content, 'utf8')
-        await fs.rm(tmp, { force: true }).catch(() => undefined)
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await fs.rename(tmp, file)
         return
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException
+        if (attempt >= 8 || (e.code !== 'EPERM' && e.code !== 'EACCES')) throw err
+        await sleep(5 + attempt * 10)
       }
-      await sleep(5 + attempt * 10)
     }
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => undefined)
+    throw err
   }
 }
 
@@ -42,10 +45,47 @@ export async function writeJson(file: string, data: unknown): Promise<void> {
   await atomicWrite(file, JSON.stringify(data, null, 2))
 }
 
+/**
+ * 读 JSON：文件不存在返回 null（正常缺省）；文件存在但解析失败 = 真源损坏——
+ * 抛 CorruptFileError 由调用方显式处置（告警/留痕），绝不静默当作"不存在"。
+ */
+export class CorruptFileError extends Error {
+  constructor(
+    public file: string,
+    public cause: unknown,
+  ) {
+    super(`文件损坏（JSON 解析失败）：${file}`)
+    this.name = 'CorruptFileError'
+  }
+}
+
 export async function readJson<T>(file: string): Promise<T | null> {
+  let txt: string
   try {
-    const txt = await fs.readFile(file, 'utf8')
+    txt = await fs.readFile(file, 'utf8')
+  } catch {
+    return null // 不存在 = 正常缺省
+  }
+  try {
     return JSON.parse(txt) as T
+  } catch (err) {
+    // 损坏现场保全：原文挪到 .corrupt 侧车（不覆盖、可取证、可修复），读取端报错
+    try {
+      await fs.writeFile(`${file}.corrupt-${Date.now()}`, txt, 'utf8')
+    } catch {
+      /* 侧车写失败不掩盖主错误 */
+    }
+    throw new CorruptFileError(file, err)
+  }
+}
+
+/**
+ * 可再生数据（投影/调度配置/令牌/技能库/通知队列等派生缓存）的宽容读取：
+ * 损坏按缺省处理（真源 state.json 等必须走 readJson 的响亮语义，别用这个）。
+ */
+export async function readJsonTolerant<T>(file: string): Promise<T | null> {
+  try {
+    return await readJson<T>(file)
   } catch {
     return null
   }
@@ -158,17 +198,19 @@ export async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
 }
 
-/** 进程内异步互斥（按 key 串行化，保证单写者语义） */
+/** 进程内异步互斥（按 key 串行化，保证单写者语义）；链空闲即回收（Map 不无限增长） */
 export class KeyedMutex {
   private chains = new Map<string, Promise<unknown>>()
 
   async run<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.chains.get(key) ?? Promise.resolve()
     const next = prev.then(fn, fn)
-    this.chains.set(
-      key,
-      next.catch(() => undefined),
-    )
+    const tail = next.catch(() => undefined)
+    this.chains.set(key, tail)
+    void tail.then(() => {
+      // 链尾且仍是自己 → 回收（等待中的新任务会重新建链，串行语义不变）
+      if (this.chains.get(key) === tail) this.chains.delete(key)
+    })
     return next
   }
 }

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { createHash } from 'node:crypto'
 import type { Annotation, ArtifactMeta, Partition, StageId } from '@ai-platform/shared'
 import { PARTITION_META } from '@ai-platform/shared'
-import { newId, nowIso, readJson, writeJson } from '../domain/util.js'
+import { newId, nowIso, readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * 产物治理（[机-产物分层·三分区] / [机-产物主权流转] / [机-契约单源]）
@@ -100,7 +100,7 @@ export class ArtifactManager {
   }
 
   async contractState(): Promise<import('@ai-platform/shared').ContractState | null> {
-    return readJson<import('@ai-platform/shared').ContractState>(this.abs('delivery/contract/.contract-state.json'))
+    return readJsonTolerant<import('@ai-platform/shared').ContractState>(this.abs('delivery/contract/.contract-state.json'))
   }
 
   private async recordContractState(viewPath: string, source: string): Promise<void> {
@@ -132,7 +132,7 @@ export class ArtifactManager {
   }
 
   async listAnnotations(): Promise<Annotation[]> {
-    return (await readJson<Annotation[]>(this.annotationsFile())) ?? []
+    return (await readJsonTolerant<Annotation[]>(this.annotationsFile())) ?? []
   }
 
   async addAnnotation(input: {

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import type { StageId } from '@ai-platform/shared'
-import { newId, readJson, toRecordArray, toStringArray } from '../domain/util.js'
+import { newId, readJsonTolerant, toRecordArray, toStringArray } from '../domain/util.js'
 import type { StageOutput } from '../engine/types.js'
 import type { AiEngine } from '../engine/types.js'
 import { renderInstruction } from '../engine/stage-prompts.js'
@@ -130,8 +130,9 @@ export async function runEngine(platform: Platform, state: TaskState, job: strin
     await log.append(taskId, stage, actor, 'session_ended', { sessionId: 'eng', reason: 'interrupted', summary: '被人中断（via=interrupt）' })
   }
 
-  // 产出裁决：读文件证据（形状归一化后再交消费端——指令钉形状 + 读取兜底双保险）
-  const raw = await readJson<StageOutput>(path.join(platform.store.flowDir(taskId), 'stage-output.json'))
+  // 产出裁决：读文件证据（形状归一化后再交消费端——指令钉形状 + 读取兜底双保险）。
+  // 引擎写的文件宽容读取（损坏≈无产出 → 走重试/失败语义，不让坏 JSON 直接崩 worker）
+  const raw = await readJsonTolerant<StageOutput>(path.join(platform.store.flowDir(taskId), 'stage-output.json'))
   const output = normalizeStageOutput(raw)
 
   return { output, completed, interrupted, failed, failureSummary }

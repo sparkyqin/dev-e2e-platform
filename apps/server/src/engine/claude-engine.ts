@@ -54,12 +54,15 @@ export class ClaudeEngine implements AiEngine {
     const cli = resolveClaudeCli()
     const model = process.env.CLAUDE_MODEL
     const maxTurns = Number(process.env.CLAUDE_MAX_TURNS ?? '40')
-    const permissionMode = process.env.CLAUDE_PERMISSION_MODE ?? 'bypassPermissions'
+    // 默认 acceptEdits（可写文件、不可任意执行命令）；bypassPermissions 仅在显式
+    // CLAUDE_ALLOW_BYPASS=true 时允许——需求文本是外部输入，prompt injection 不应直达任意命令
+    const permissionMode = process.env.CLAUDE_PERMISSION_MODE ?? 'acceptEdits'
+    const allowBypass = process.env.CLAUDE_ALLOW_BYPASS === 'true'
 
     const args: string[] = ['-p', '--output-format', 'stream-json', '--verbose']
     if (model) args.push('--model', model)
     if (maxTurns > 0) args.push('--max-turns', String(maxTurns))
-    if (permissionMode === 'bypassPermissions') {
+    if (permissionMode === 'bypassPermissions' && allowBypass) {
       args.push('--dangerously-skip-permissions', '--allow-dangerously-skip-permissions')
     } else {
       args.push('--permission-mode', permissionMode)
@@ -128,8 +131,8 @@ export class ClaudeEngine implements AiEngine {
         } catch {
           continue
         }
-        if (ended && (msg.type === 'result' || msg.subtype)) {
-          // 已发过 session_ended，跳过
+        if (ended && msg.type === 'result') {
+          continue // 已发过 session_ended（流尾部重复 result 帧），跳过
         }
         if (msg.type === 'system' && msg.subtype === 'init') {
           sessionId = msg.session_id ?? ''

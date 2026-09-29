@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { TaskCard } from '@ai-platform/shared'
-import { ensureDir, readJson, writeJson } from '../domain/util.js'
+import { ensureDir, readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * 只读投影（[机-一处真源]：`.flow/state.json` 唯一真源，投影只读）
@@ -20,7 +20,7 @@ export class Projection {
 
   async init(): Promise<void> {
     await ensureDir(path.dirname(this.file))
-    const saved = await readJson<ProjectionFile>(this.file)
+    const saved = await readJsonTolerant<ProjectionFile>(this.file)
     if (saved) for (const c of saved.cards) this.cards.set(c.taskId, c)
   }
 

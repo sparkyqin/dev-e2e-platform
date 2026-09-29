@@ -1,5 +1,5 @@
 import type { SchedulerConfig } from '@ai-platform/shared'
-import { readJson, writeJson } from '../domain/util.js'
+import { readJsonTolerant, writeJson } from '../domain/util.js'
 
 /**
  * 部署级任务队列（[机-会话厅并发] / [机-门不占并发槽] / [机-部署队列真隔离]）
@@ -19,7 +19,7 @@ export class Scheduler {
   constructor(private file: string) {}
 
   async init(): Promise<void> {
-    const saved = await readJson<{ maxConcurrent: number }>(this.file)
+    const saved = await readJsonTolerant<{ maxConcurrent: number }>(this.file)
     if (saved) this.config = saved
     else await writeJson(this.file, this.config)
   }  async setMaxConcurrent(n: number): Promise<void> {

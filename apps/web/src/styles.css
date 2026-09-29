@@ -22,11 +22,15 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+/* 排印说明：全库字号为固定 px 密度型设计（200+ 处声明），不做根字号缩放——
+   只放大 root 会让 .btn/input 等继承元素与周围 px 标签失调。高分辨率适配走布局层：
+   容器居中 + 大屏断点加宽右栏/看板列（见响应式节）。 */
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13.5px;
   color: var(--ink);
   background: var(--bg);
+  min-width: 960px; /* 双栏工作台的最小可用宽度；更窄走 @media 单栏 */
 }
 code, .mono { font-family: var(--mono); font-size: 0.92em; background: #eef1f7; padding: 1px 5px; border-radius: 4px; }
 button { font: inherit; cursor: pointer; }
@@ -308,7 +312,7 @@ a { color: var(--brand); text-decoration: none; }
 /* 顶层页面通用骨架（任务/度量/运行时/技能 各自正交视图共用） */
 .page-view { height: 100%; overflow: auto; padding: 14px 20px 20px; }
 .page-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-.page-panels { display: flex; flex-direction: column; gap: 12px; max-width: 780px; }
+.page-panels { display: flex; flex-direction: column; gap: 12px; max-width: 780px; margin-inline: auto; } /* 大屏居中，不贴左 */
 
 .task-card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -420,7 +424,7 @@ a { color: var(--brand); text-decoration: none; }
 .foot-hint { margin-right: auto; font-size: 11px; color: var(--ink-3); }
 
 /* ---------- 任务工作台 ---------- */
-.taskview { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.taskview { height: 100%; display: flex; flex-direction: column; overflow: hidden; max-width: 1920px; margin-inline: auto; width: 100%; }
 .task-head { background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px 0; flex-shrink: 0; }
 .task-head-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding-bottom: 9px; }
 .task-head-row h2 { font-size: 16.5px; }
@@ -477,6 +481,9 @@ a { color: var(--brand); text-decoration: none; }
 .pending-confirm { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .pending-confirm li { border: 1px solid #f2dcae; background: #fffaf0; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
 .pending-confirm li.resolved { border-color: #bfe6cd; background: #f4fcf7; }
+.pc-form { display: flex; gap: 6px; margin-top: 6px; }
+.pc-form input { flex: 1; min-width: 0; font-size: 12px; padding: 5px 8px; }
+.pc-form .btn.sm { padding: 5px 12px; font-size: 12px; flex-shrink: 0; }
 .pc-q { font-weight: 600; margin-bottom: 4px; }
 .pc-a { color: #8a5000; }
 .pc-res { margin-top: 4px; font-size: 11.5px; color: var(--ink-2); }
@@ -931,6 +938,25 @@ a { color: var(--brand); text-decoration: none; }
   .task-cols { grid-template-columns: 1fr; overflow: auto; }
   .col { overflow: visible; }
   .col-mid { min-height: 480px; }
+  body { min-width: 0; } /* 单栏布局解除最小宽度 */
+}
+
+/* ---------- 高分辨率自适应（大屏：1600px+） ----------
+   只做宽度级适配（右栏/看板列/页面容器加宽 + 居中），不动字号与密度——
+   全库字号是 px 密度型设计，放大字号需整库重构，此处保持原排印 */
+@media (min-width: 1600px) {
+  .task-cols { grid-template-columns: minmax(0, 1fr) 460px; }
+  .board-col { flex-basis: 264px; }
+}
+@media (min-width: 2000px) {
+  .task-cols { grid-template-columns: minmax(0, 1fr) 520px; }
+  .board-col { flex-basis: 300px; }
+}
+/* 超宽屏（2560px+）：度量页放宽多列铺 KPI，页面不再左右留白失衡 */
+@media (min-width: 2560px) {
+  .metrics-view { max-width: 1720px; }
+  .metrics-kpis { grid-template-columns: repeat(8, 1fr); }
+  .page-panels { max-width: 980px; }
 }
 
 /* 滚动条 */
@@ -942,7 +968,7 @@ a { color: var(--brand); text-decoration: none; }
 /* ---------- 质量度量（顶层 #/metrics · 事件流只读派生） ---------- */
 
 /* 度量专属：横向铺开（条形图/门等待表/全量任务一览），其余骨架用 .page-view */
-.metrics-view { max-width: 1080px; }
+.metrics-view { max-width: 1080px; margin-inline: auto; }
 .metrics-view .metrics-kpis { gap: 10px; margin-bottom: 12px; }
 .metrics-view .kpi { padding: 14px 8px; }
 .metrics-view .kpi-v { font-size: 22px; }

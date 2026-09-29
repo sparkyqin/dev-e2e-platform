@@ -1,8 +1,9 @@
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
+import { createHash } from 'node:crypto'
 import type { Notification, StageId, TaskState } from '@ai-platform/shared'
 import { STAGE_SOVEREIGNTY } from '@ai-platform/shared'
-import { EventBus, newId, nowIso, readDecisionRecords, readJson, sleep, writeJson } from '../domain/util.js'
+import { EventBus, KeyedMutex, newId, nowIso, readDecisionRecords, readJson, sleep, writeJson } from '../domain/util.js'
 import { TaskStore } from '../domain/task-store.js'
 import { computeHealth } from '../domain/health.js'
 import { Projection } from '../runtime/projections.js'
@@ -22,6 +23,8 @@ import { loadDeliveryState } from './workers.js'
 import { loadInjections, saveInjections } from '../domain/event-log.js'
 import { seedGreenfield, seedLegacyRepo } from '../runtime/legacy-seed.js'
 import { deliveryDirOf, initRepo } from '../runtime/git.js'
+import { HttpError } from '../api/auth.js'
+import { appendDecisionRecordFile } from '../domain/util.js'
 import type { CreateTaskRequest } from '@ai-platform/shared'
 import { personOf } from '@ai-platform/shared'
 
@@ -151,14 +154,18 @@ export class Platform {
 
   // ---------- 任务 ----------
 
+  /** 建任务全局串行（进程内）：seq 分配 → 工作区落盘 → 真源落盘必须原子，否则并发建任务撞 seq 互相覆盖 */
+  private createMutex = new KeyedMutex()
+
   async nextSeq(): Promise<number> {
     const all = await this.store.listAll()
     return all.reduce((m, s) => Math.max(m, s.seq), 99) + 1
   }
 
   async createTask(req: CreateTaskRequest, internal?: { startHeld?: boolean }): Promise<TaskState> {
-    const seq = await this.nextSeq()
-    const taskId = `task-${seq}`
+    return this.createMutex.run('create-task', async () => {
+      const seq = await this.nextSeq()
+      const taskId = `task-${seq}`
     const taskDir = this.store.taskDir(taskId)
     const ddir = deliveryDirOf(taskDir)
 
@@ -222,6 +229,7 @@ export class Platform {
     })
     await this.kick()
     return state
+    })
   }
 
   private async startTask(taskId: string): Promise<void> {
@@ -370,6 +378,10 @@ export class Platform {
             const stat = await fs.stat(full).catch(() => null)
             if (!stat) continue
             const prev = existing.get(rel)
+            const content = await fs.readFile(full, 'utf8').catch(() => '')
+            // 内容指纹（前 16 位哈希 + 长度）：同字节数不同内容不再漏记 artifact_written
+            const digest = createHash('sha256').update(content).digest('hex').slice(0, 16)
+            const changed = !prev || prev.bytes !== stat.size || prev.contentHash !== digest
             const sovereignRole =
               ['delivery/spec.md', 'delivery/design.md'].includes(rel) && st.completedStages.includes('design')
                 ? 'owner'
@@ -384,12 +396,13 @@ export class Platform {
               path: rel,
               partition: am.partitionOf(rel),
               bytes: stat.size,
-              updatedAt: prev && prev.bytes === stat.size ? prev.updatedAt : nowIso(),
+              updatedAt: changed ? nowIso() : (prev?.updatedAt ?? nowIso()),
               stage: prev?.stage ?? st.stage,
               sovereignRole,
+              contentHash: digest,
             }
             // 新文件或内容变更 → artifact_written 留痕（append-only，任务历程可回放）
-            if (!prev || prev.bytes !== stat.size) written.push(entry)
+            if (changed) written.push(entry)
             out.push(entry)
           }
         }
@@ -535,6 +548,41 @@ export class Platform {
     )
     await this.store.eventLog(taskId).append(taskId, st.stage, { type: 'human', userId: asUserId }, 'user_message', { text, source: 'instruction' })
     await this.kick()
+    return state
+  }
+
+  /**
+   * 待追认闭环（场景2 后半段）：事实门超时降级推进后的人工追认。
+   * 追认写 finalAnswer/resolvedAt/resolvedBy，并落决策记录（process/decisions.json）——
+   * 假设不作数的事实，最终以人的答案留痕；不改变任务状态（降级时任务已在推进）。
+   */
+  async resolvePendingConfirmation(taskId: string, confirmationId: string, finalAnswer: string, asUserId: string): Promise<TaskState> {
+    const me = personOf(asUserId)
+    const st = await this.store.load(taskId)
+    const { state } = await this.store.mutate(
+      taskId,
+      { expectedVersion: null, audit: { actor: asUserId, actorName: me.name, action: 'resolve-pending-confirmation' } },
+      (s) => {
+        const pc = s.pendingConfirmations.find((p) => p.id === confirmationId)
+        if (!pc) throw new HttpError(404, 'not-found', `待追认项不存在：${confirmationId}`)
+        if (pc.resolvedAt) throw new HttpError(409, 'already-resolved', '该项已追认（不可重复）')
+        pc.resolvedAt = nowIso()
+        pc.resolvedBy = me.name
+        pc.finalAnswer = finalAnswer
+      },
+    )
+    const pc = state.pendingConfirmations.find((p) => p.id === confirmationId)!
+    await this.store.eventLog(taskId).append(taskId, st.stage, { type: 'human', userId: asUserId, name: me.name }, 'user_message', {
+      text: `待追认已确认（原假设「${pc.assumedAnswer.slice(0, 120)}」→ 事实「${finalAnswer.slice(0, 200)}」）`,
+      source: 'instruction',
+    })
+    await appendDecisionRecordFile(path.join(this.store.taskDir(taskId), 'process', 'decisions.json'), {
+      topic: `追认（原降级假设：${pc.question.split('\n')[0]}）`,
+      decision: finalAnswer,
+      degraded: false,
+      ts: nowIso(),
+    })
+    await this.syncArtifacts(taskId) // decisions.json 变更落索引留痕
     return state
   }
 

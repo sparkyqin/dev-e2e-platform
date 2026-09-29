@@ -16,10 +16,6 @@ export interface HealthInput {
   maxRepairRounds: number
 }
 
-export function emptyHealth(budget: number): TaskHealth {
-  return { level: 'green', facts: [] }
-}
-
 export function computeHealth(input: HealthInput, prev: TaskHealth): { health: TaskHealth; changed: boolean } {
   const facts: HealthFact[] = []
   const ts = nowIso()

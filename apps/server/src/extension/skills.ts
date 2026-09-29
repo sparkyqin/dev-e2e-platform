@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import type { Skill, SkillAuditEntry } from '@ai-platform/shared'
-import { newId, nowIso, readJson, writeJson, ensureDir } from '../domain/util.js'
+import { newId, nowIso, readJsonTolerant, writeJson, ensureDir } from '../domain/util.js'
 
 /**
  * 技能沉淀闭环（场景10 / [机-技能沉淀闭环·人采纳] / [机-写入 fail-closed 留痕] / [机-materialize 快照]）
@@ -27,13 +27,13 @@ export class SkillLibrary {
 
   async init(): Promise<void> {
     await ensureDir(path.join(this.assetsDir, 'skills'))
-    if (!(await readJson<{ skills: Skill[] }>(this.libraryFile()))) {
+    if (!(await readJsonTolerant<{ skills: Skill[] }>(this.libraryFile()))) {
       await writeJson(this.libraryFile(), { skills: [], version: 0 })
     }
   }
 
   async all(): Promise<Skill[]> {
-    const lib = await readJson<{ skills: Skill[]; version: number }>(this.libraryFile())
+    const lib = await readJsonTolerant<{ skills: Skill[]; version: number }>(this.libraryFile())
     return lib?.skills ?? []
   }
 
@@ -42,11 +42,11 @@ export class SkillLibrary {
   }
 
   async candidates(): Promise<Skill[]> {
-    return (await readJson<Skill[]>(this.candidatesFile())) ?? []
+    return (await readJsonTolerant<Skill[]>(this.candidatesFile())) ?? []
   }
 
   private async saveAll(skills: Skill[]): Promise<void> {
-    const lib = (await readJson<{ skills: Skill[]; version: number }>(this.libraryFile())) ?? { skills: [], version: 0 }
+    const lib = (await readJsonTolerant<{ skills: Skill[]; version: number }>(this.libraryFile())) ?? { skills: [], version: 0 }
     lib.skills = skills
     lib.version += 1
     await writeJson(this.libraryFile(), lib)
@@ -180,7 +180,9 @@ export class SkillLibrary {
   /** 下次任务开局：物化匹配技能快照到工作区 host-skills/（[机-materialize 快照]） */
   async materialize(workspaceDir: string, repo: string, module: string): Promise<{ id: string; name: string; version: number }[]> {
     const active = await this.active()
-    const matched = active.filter((s) => !s.scope.repo || s.scope.repo === repo || !s.scope.module || s.scope.module === module)
+    // 作用域匹配 = repo 与 module 各自「无限制或命中」的交集（AND）——
+    // 旧实现是 OR：只要技能没配 module 就无条件注入所有任务，作用域约束形同虚设
+    const matched = active.filter((s) => (!s.scope.repo || s.scope.repo === repo) && (!s.scope.module || s.scope.module === module))
     const dir = path.join(workspaceDir, 'host-skills')
     await ensureDir(dir)
     const injected: { id: string; name: string; version: number }[] = []
