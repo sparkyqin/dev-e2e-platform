@@ -931,21 +931,24 @@ a { color: var(--brand); text-decoration: none; }
 
 /* ---------- 两段分组横幅（愿景：设计段·人与AI共创 ｜ 执行段·AI自动化+人审核） ---------- */
 
-/* 紧凑条分组：竖排组标签 + 组内 chip 横排；组间分隔线 */
-.pipe-group { display: flex; align-items: center; gap: 7px; min-width: 0; }
+/* 紧凑条分组：横向小标签作组前缀 + 组内 chip 横排；组间分隔线。
+   收缩压力由组标签 ellipsis 吸收；chip 容器 flex-shrink:0——chip 永不收缩（否则溢出压到相邻组），
+   仍放不下由 .pipe-compact 横向滚动兜底 */
+.pipe-group { display: flex; align-items: center; gap: 7px; }
 .pipe-group + .pipe-group { border-left: 1px solid var(--line); padding-left: 9px; }
 .pipe-group-label {
-  writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
-  font-size: 9.5px; font-weight: 800; letter-spacing: 1px; white-space: nowrap;
-  border-radius: 4px; padding: 4px 2px; flex-shrink: 0; cursor: help;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.3px; white-space: nowrap;
+  border-radius: 4px; padding: 2px 6px; cursor: help;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 .pipe-group.design .pipe-group-label { color: #3a52c4; background: #eef1fd; }
 .pipe-group.execute .pipe-group-label { color: #6d3bd6; background: #f0ecfd; }
-.pipe-group-chips { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pipe-group-chips { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
-/* 任务看板列分组：组头横幅 + 组内列横排 */
+/* 任务看板列分组：组头横幅 + 组内列横排；组 flex-shrink:0 不收缩（列固定宽，
+   组被压缩会让设计组末列「测试设计」溢出压到执行组「执行」列），超宽由看板横向滚动 */
 .pipe-col-group {
-  display: flex; flex-direction: column; gap: 5px; min-width: 0;
+  display: flex; flex-direction: column; gap: 5px; flex-shrink: 0;
   border-radius: 12px; padding: 6px; border: 1px dashed transparent;
 }
 .pipe-col-group.design { background: rgba(238, 241, 253, 0.45); border-color: #d9e0fb; }
@@ -958,10 +961,10 @@ a { color: var(--brand); text-decoration: none; }
 .pipe-col-group.design .pipe-col-group-label { color: #3a52c4; }
 .pipe-col-group.execute .pipe-col-group-label { color: #6d3bd6; }
 .pipe-col-group-hint { font-size: 10px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pipe-col-group-cols { display: flex; gap: 8px; min-width: 0; }
+.pipe-col-group-cols { display: flex; gap: 8px; }
 
-/* 首页阶段看板分组（会话厅 board 视图）：同款组头 */
-.board-col-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* 首页阶段看板分组（会话厅 board 视图）：同款组头，组不收缩 */
+.board-col-group { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .board-group-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px; min-width: 0; }
 .board-group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .board-group-dot.design { background: var(--brand); }
@@ -970,7 +973,7 @@ a { color: var(--brand); text-decoration: none; }
 .board-col-group.design .board-group-label { color: #3a52c4; }
 .board-col-group.execute .board-group-label { color: #6d3bd6; }
 .board-group-hint { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.board-group-cols { display: flex; gap: 10px; min-width: 0; }
+.board-group-cols { display: flex; gap: 10px; }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1280px) {
