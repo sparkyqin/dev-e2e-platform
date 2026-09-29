@@ -1,19 +1,18 @@
 /**
- * 任务侧栏（multica 式属性栏：core 常显 · 配置折叠 · 列表限量）：
- * - core：阶段轮次 / 需求描述 / 健康警示（green 不渲染，头部健康点已有）
- * - 任务属性（开发方式/模板/剧本/引擎/Token）收进折叠区——低频只读配置
- * - 干系人：责任人+需求方常显，其余折叠；历程：默认最近 8 条，按需展开全部
+ * 任务右栏（两栏制：行动优先）：
+ * - 行动卡（GateCard/MrPanel）由 TaskView 装配在本栏顶部；历程在看板页签
+ * - 任务信息：需求描述（进来第一问「这任务是啥」）+ 健康警示（green 不渲染，头部健康点已有）
+ * - 任务属性（阶段轮次/方式/模板/剧本/引擎/Token）收进折叠 —— 低频只读
+ * - 干系人：责任人+需求方常显，其余折叠
+ * - 接管 / 恢复自动：安全钮常驻（过程可接管铁律）
+ * - AR 子任务 / AR 谱系 / 待追认：按需出现
  */
-import { useState } from 'react'
-import type { JourneyEntry, TaskDetail, TaskState } from '@ai-platform/shared'
+import type { TaskDetail, TaskState } from '@ai-platform/shared'
 import { api } from '../api'
 import { useApp } from '../store'
 import { HEALTH_META, SCENARIO_LABEL, STATUS_META, fmtTime, stageLabel } from '../format'
 
-/** 历程默认展示条数（multica execution-log 模式：限量常显 + 按需全量） */
-const JOURNEY_PREVIEW = 8
-
-export default function TaskSidebar({
+export default function TaskRail({
   state,
   detail,
   onChanged,
@@ -23,7 +22,6 @@ export default function TaskSidebar({
   onChanged: (st: TaskState) => void
 }): React.JSX.Element {
   const { me, pushToast } = useApp()
-  const [showAllJourney, setShowAllJourney] = useState(false)
   const hm = HEALTH_META[state.health.level]
   const tokenPct = Math.min(100, Math.round(((state.tokenUsage.input + state.tokenUsage.output) / state.tokenUsage.budget) * 100))
 
@@ -70,12 +68,6 @@ export default function TaskSidebar({
         <h3>任务信息</h3>
         <dl className="info-list">
           <div>
-            <dt>阶段</dt>
-            <dd>
-              {stageLabel(state.stage)}（第 {state.stageRounds[state.stage] ?? 1} 轮）· 修复 {state.repairRounds} 轮
-            </dd>
-          </div>
-          <div>
             <dt>需求描述</dt>
             <dd className="req-text">{state.requirementText}</dd>
           </div>
@@ -99,8 +91,14 @@ export default function TaskSidebar({
         </dl>
 
         <details className="side-fold">
-          <summary>任务属性（方式 / 模板 / 引擎 / Token）</summary>
+          <summary>任务属性（轮次 / 方式 / 引擎 / Token）</summary>
           <dl className="info-list">
+            <div>
+              <dt>阶段轮次</dt>
+              <dd>
+                {stageLabel(state.stage)} 第 {state.stageRounds[state.stage] ?? 1} 轮 · 修复 {state.repairRounds} 轮
+              </dd>
+            </div>
             <div>
               <dt>开发方式</dt>
               <dd>{state.mode}</dd>
@@ -235,24 +233,6 @@ export default function TaskSidebar({
           </ul>
         </section>
       )}
-
-      <section className="panel journey-panel">
-        <h3>任务历程{detail.journey.length > 0 && <small className="hint"> · {detail.journey.length} 条</small>}</h3>
-        <ul className="journey">
-          {detail.journey.length === 0 && <li className="empty">（暂无）</li>}
-          {(showAllJourney ? [...detail.journey].reverse() : [...detail.journey].reverse().slice(0, JOURNEY_PREVIEW)).map((j: JourneyEntry) => (
-            <li key={j.seq} className={`jr jr-${j.kind}`}>
-              <time>{fmtTime(j.ts)}</time>
-              <span>{j.text}</span>
-            </li>
-          ))}
-        </ul>
-        {detail.journey.length > JOURNEY_PREVIEW && (
-          <button className="link journey-more" onClick={() => setShowAllJourney((s) => !s)}>
-            {showAllJourney ? '收起' : `显示全部 ${detail.journey.length} 条`}
-          </button>
-        )}
-      </section>
     </div>
   )
 }

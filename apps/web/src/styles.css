@@ -426,19 +426,32 @@ a { color: var(--brand); text-decoration: none; }
 .task-head-row h2 { font-size: 16.5px; }
 .back { font-size: 17px; color: var(--ink-3); padding: 2px 8px; border-radius: 6px; }
 .back:hover { background: #f0f3fa; color: var(--brand); }
-.task-updated { color: var(--ink-3); font-size: 11.5px; }
+
+/* 现状行：一句话「现在怎么样、在等谁」（hero 第二行；把徽标/阶段/门等散落状态合成一句） */
+.now-line { display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px; font-size: 13.5px; color: var(--ink); min-width: 0; }
+.now-icon { flex-shrink: 0; }
+.now-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.now-main b { color: var(--brand); font-weight: 600; }
+.now-round { color: var(--ink-2); }
+.now-meta { margin-left: auto; flex-shrink: 0; color: var(--ink-3); font-size: 11.5px; }
 
 /* 阶段轨（旧线性轨）已由任务看板 PipelineBoard 取代（multica 式：列=阶段 · 卡=产物） */
 
-.task-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 292px minmax(0, 1fr) 430px; gap: 12px; padding: 12px; overflow: hidden; }
+.task-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; padding: 12px; overflow: hidden; }
 .col { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
 .col-mid { overflow: hidden; }
 .col-mid .tabs { background: var(--panel); border-radius: var(--radius) var(--radius) 0 0; border: 1px solid var(--line); border-bottom: 0; padding: 0 8px; }
 .col-mid .tabs button { font-size: 13px; }
 .materials-wrap { flex: 1; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px; }
-.no-gate {
+
+/* 看板页签：9 列全景 + 历程时间线（空间 + 时间同页；外层滚动，看板列不被裁剪） */
+.board-tab { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; background: var(--bg); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px; }
+.board-tab .pipeline-board { padding: 0; overflow: visible; flex-shrink: 0; }
+
+/* 右栏静默态：无事可做时一行带过（机制解释进 title，不上界面） */
+.rail-quiet {
   background: var(--panel); border: 1px dashed var(--line-2); border-radius: var(--radius);
-  padding: 16px; color: var(--ink-3); font-size: 12.5px; text-align: center; line-height: 1.8;
+  padding: 10px 14px; color: var(--ink-2); font-size: 12.5px; text-align: center;
 }
 .task-error { padding: 60px 20px; text-align: center; color: var(--ink-2); display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .loading-big { display: grid; place-items: center; height: 100%; color: var(--ink-3); font-size: 14px; }
@@ -580,6 +593,10 @@ a { color: var(--brand); text-decoration: none; }
 .gate-card.kind-delivery { border-top-color: var(--err); border-color: #f5c8c8; }
 .gate-card.decided { opacity: 0.75; border-top-color: var(--ok); }
 .gate-card.degraded { border-top-color: var(--warn); }
+
+/* 右栏行动优先：待决策门置顶为唯一亮色焦点（呼吸光环；已决策/降级不脉冲） */
+@keyframes rail-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.16); } 50% { box-shadow: 0 0 0 6px rgba(217, 119, 6, 0.05); } }
+.rail-action > .gate-card:not(.decided):not(.degraded) { animation: gate-in 0.25s ease-out, rail-pulse 2.4s ease-in-out infinite; }
 .gate-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
 .gate-kind { font-size: 15px; font-weight: 800; }
 .gate-meta { margin-left: auto; color: var(--ink-3); font-size: 11px; }
@@ -793,21 +810,12 @@ a { color: var(--brand); text-decoration: none; }
 .board-peek-foot .hint { flex: 1; }
 
 /* ---------- 任务看板（TaskView 顶栏 · multica 式管线看板，默认紧凑一行、按需展开） ---------- */
-.pipeline-wrap { position: relative; padding-right: 92px; }
 .pipeline-board {
   display: flex; gap: 8px; padding: 6px 0 10px; overflow-x: auto; overflow-y: hidden;
   scrollbar-width: thin;
 }
-.pipe-toggle {
-  position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-  height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-2);
-  background: var(--panel); color: var(--ink-2); font-size: 12px; line-height: 1;
-  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(23,30,46,0.06);
-}
-.pipe-toggle:hover { color: var(--brand); border-color: var(--brand); }
 
-/* 紧凑条（默认态）：一行阶段 chip，点任一阶段展开看板并定位该列 */
+/* 紧凑条（hero 常驻）：一行阶段 chip = 进度指示器，点任一阶段切看板页签定位该列 */
 .pipe-compact { display: flex; align-items: center; gap: 6px; padding: 4px 0 10px; overflow-x: auto; scrollbar-width: thin; }
 .pipe-chip {
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;

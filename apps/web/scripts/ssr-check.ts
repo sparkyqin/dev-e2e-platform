@@ -1,12 +1,18 @@
 /**
  * 临时诊断脚本（不参与构建/类型检查）：
- * 用真实任务数据 SSR 渲染 ArtifactsPanel，确定性复现「材料页签白屏」。
- * 覆盖路径 = 组件挂载渲染（与点击材料 tab 的挂载路径完全一致）。
+ * 用真实任务数据 SSR 渲染详情页全部可视组件——确定性复现「渲染崩溃/白屏」。
+ * 覆盖：ArtifactsPanel / PipelineStrip / PipelineBoard / TaskRail / JourneyPanel / GateCard / MrPanel / NowLine
  * 注：不用 JSX（scripts/ 不在 tsconfig include 内，避免经典/自动运行时歧义）。
  */
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import ArtifactsPanel from '../src/components/ArtifactsPanel'
+import PipelineBoard, { PipelineStrip } from '../src/components/PipelineBoard'
+import TaskRail from '../src/components/TaskRail'
+import JourneyPanel from '../src/components/JourneyPanel'
+import GateCard from '../src/components/GateCard'
+import MrPanel from '../src/components/MrPanel'
+import { NowLine } from '../src/views/TaskView'
 import { AppProvider } from '../src/store'
 import type { TaskDetail } from '@ai-platform/shared'
 
@@ -39,24 +45,29 @@ async function main(): Promise<void> {
   let crash = 0
   for (const t of tasks) {
     const detail = (await (await fetch(`${BASE}/api/tasks/${t.taskId}`, { headers: { cookie } })).json()) as TaskDetail
-    try {
-      const html = renderToString(
-        React.createElement(
-          AppProvider,
-          null,
-          React.createElement(ArtifactsPanel, { taskId: t.taskId, detail, refreshDetail: async () => {} }),
-        ),
-      )
-      if (!html.includes('artifact-group') && !html.includes('injections')) {
-        console.log('⚠', t.taskId, '输出异常短:', JSON.stringify(html.slice(0, 100)))
+    const { state } = detail
+    const parts: Array<[string, React.ReactNode]> = [
+      ['NowLine', React.createElement(NowLine, { state })],
+      ['PipelineStrip', React.createElement(PipelineStrip, { state, events: [], onOpenBoard: () => {} })],
+      ['PipelineBoard', React.createElement(PipelineBoard, { state, events: [], onOpenArtifact: () => {} })],
+      ['TaskRail', React.createElement(TaskRail, { state, detail, onChanged: () => {} })],
+      ['JourneyPanel', React.createElement(JourneyPanel, { journey: detail.journey })],
+      ['ArtifactsPanel', React.createElement(ArtifactsPanel, { taskId: t.taskId, detail, refreshDetail: async () => {} })],
+    ]
+    if (state.gate) parts.push(['GateCard', React.createElement(GateCard, { taskId: t.taskId, state, gate: state.gate, onChanged: () => {} })])
+    if (detail.delivery) parts.push(['MrPanel', React.createElement(MrPanel, { taskId: t.taskId, detail, refreshDetail: async () => {} })])
+    for (const [name, node] of parts) {
+      try {
+        const html = renderToString(React.createElement(AppProvider, null, node))
+        if (html.length < 30) console.log('⚠', t.taskId, name, '输出异常短:', JSON.stringify(html.slice(0, 60)))
+      } catch (e) {
+        crash++
+        console.log('✗', t.taskId, name, (e as Error).message)
+        console.log((e as Error).stack?.split('\n').slice(0, 6).join('\n'))
       }
-    } catch (e) {
-      crash++
-      console.log('✗', t.taskId, (e as Error).message)
-      console.log((e as Error).stack?.split('\n').slice(0, 8).join('\n'))
     }
   }
-  console.log(crash === 0 ? `✓ ${tasks.length} 个任务材料面板全部渲染通过（挂载路径）` : `✗ ${crash}/${tasks.length} 个任务渲染崩溃`)
+  console.log(crash === 0 ? `✓ ${tasks.length} 个任务 × 全组件渲染通过` : `✗ ${crash} 处渲染崩溃`)
 }
 
 void main()

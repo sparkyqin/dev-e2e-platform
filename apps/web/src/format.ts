@@ -42,6 +42,19 @@ export function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)}MB`
 }
 
+/** 相对时间（现状行「更新于 3 分钟前」）：刚刚 / N 分钟前 / N 小时前 / 跨天回退到 MM-DD HH:mm */
+export function fmtRel(iso: string): string {
+  const d = new Date(iso).getTime()
+  if (Number.isNaN(d)) return iso
+  const diff = Date.now() - d
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  const t = new Date(iso)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}`
+}
+
 export function stageLabel(stage: StageId): string {
   return STAGES[stage]?.label ?? stage
 }
