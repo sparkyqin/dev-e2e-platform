@@ -13,6 +13,7 @@ import KnowledgeView from './views/KnowledgeView'
 import IdentityPicker from './components/IdentityPicker'
 import NotificationBell from './components/NotificationBell'
 import LoginView from './components/LoginView'
+import ErrorBoundary from './components/ErrorBoundary'
 
 type TopView = 'tasks' | 'task' | 'metrics' | 'runtime' | 'knowledge'
 
@@ -105,17 +106,19 @@ function Shell(): React.JSX.Element {
     <div className="app">
       <TopBar />
       <main className="app-main">
-        {route.view === 'metrics' ? (
-          <MetricsView />
-        ) : route.view === 'runtime' ? (
-          <RuntimeView />
-        ) : route.view === 'knowledge' ? (
-          <KnowledgeView />
-        ) : route.view === 'task' && route.taskId ? (
-          <TaskView key={route.taskId} taskId={route.taskId} />
-        ) : (
-          <TasksView />
-        )}
+        <ErrorBoundary resetKey={`${route.view}:${route.taskId ?? ''}`}>
+          {route.view === 'metrics' ? (
+            <MetricsView />
+          ) : route.view === 'runtime' ? (
+            <RuntimeView />
+          ) : route.view === 'knowledge' ? (
+            <KnowledgeView />
+          ) : route.view === 'task' && route.taskId ? (
+            <TaskView key={route.taskId} taskId={route.taskId} />
+          ) : (
+            <TasksView />
+          )}
+        </ErrorBoundary>
       </main>
       <Toasts />
     </div>

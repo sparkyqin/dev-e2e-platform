@@ -982,3 +982,33 @@ a { color: var(--brand); text-decoration: none; }
 .mt-rb { color: var(--warn); font-size: 10.5px; flex-shrink: 0; }
 .mt-fp { color: var(--ok); font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
 .metrics-tasks .badge { font-size: 10px; padding: 1px 6px; flex-shrink: 0; }
+
+/* ---------- 渲染错误边界（崩溃显示人话面板，不白屏） ---------- */
+.crash-panel {
+  max-width: 620px;
+  margin: 56px auto;
+  padding: 26px 30px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.crash-panel h3 { margin: 0; font-size: 16px; }
+.crash-panel p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.crash-panel pre {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fdecec;
+  border: 1px solid #f5c8c8;
+  border-radius: 8px;
+  color: #a51f1f;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.crash-actions { display: flex; gap: 8px; }
+.crash-actions .btn { text-decoration: none; }
