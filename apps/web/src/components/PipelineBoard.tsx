@@ -95,6 +95,8 @@ export default function PipelineBoard({ state, events, onOpenArtifact }: Props):
   // 展开态记忆在 localStorage，点紧凑条的阶段直达展开看板对应列
   const [expanded, setExpanded] = useState(() => localStorage.getItem('pipeline-expanded') === '1')
   const [focusSid, setFocusSid] = useState<StageId | null>(null)
+  /** 「+N 更多」原地展开的阶段（列内展示全部产物，不跨栏跳转） */
+  const [moreOpen, setMoreOpen] = useState<Set<StageId>>(new Set())
   const boardRef = useRef<HTMLDivElement | null>(null)
   const traces = useMemo(() => aggregateTraces(events), [events])
   const byStage = useMemo(() => {
@@ -156,7 +158,7 @@ export default function PipelineBoard({ state, events, onOpenArtifact }: Props):
                 </header>
                 <div className="pipe-body">
                   {st === 'current' && <CurrentStatusLine state={state} />}
-                  {arts.slice(0, 3).map((a) => (
+                  {(moreOpen.has(sid) ? arts : arts.slice(0, 3)).map((a) => (
                     <button key={a.path} className={`pipe-card ${PARTITION_CLS[a.partition] ?? 'pp-process'}`} onClick={() => onOpenArtifact(a.path)} title={`${a.path}\n${a.partition} 区 · 主权 ${a.sovereignRole} · ${fmtBytes(a.bytes)} · ${fmtTime(a.updatedAt)}\n点击在材料页查看内容`}>
                       <span className="pipe-card-dot" />
                       <span className="pipe-card-name">{a.path.split('/').pop()}</span>
@@ -164,8 +166,19 @@ export default function PipelineBoard({ state, events, onOpenArtifact }: Props):
                     </button>
                   ))}
                   {arts.length > 3 && (
-                    <button className="pipe-more" onClick={() => onOpenArtifact(null)} title={`点击到「材料与批注」查看该阶段全部产物：\n${arts.map((a) => a.path).join('\n')}`}>
-                      +{arts.length - 3} 更多…
+                    <button
+                      className="pipe-more"
+                      onClick={() =>
+                        setMoreOpen((s) => {
+                          const n = new Set(s)
+                          if (n.has(sid)) n.delete(sid)
+                          else n.add(sid)
+                          return n
+                        })
+                      }
+                      title={`原地展开该阶段全部 ${arts.length} 个产物`}
+                    >
+                      {moreOpen.has(sid) ? '收起' : `+${arts.length - 3} 更多…`}
                     </button>
                   )}
                   {st === 'todo' && arts.length === 0 && <span className="pipe-empty">—</span>}

@@ -6,7 +6,7 @@
  * - 契约单源漂移警示
  * - 知识注入摘要（OKL 三层实际塞了什么）
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Annotation, ArtifactMeta, InjectionSummary, Partition, TaskDetail } from '@ai-platform/shared'
 import { PARTITION_META, STAGE_SOVEREIGNTY } from '@ai-platform/shared'
 import type { StageId } from '@ai-platform/shared'
@@ -25,6 +25,7 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focus }:
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
   const [busy, setBusy] = useState(false)
+  const viewerRef = useRef<HTMLDivElement | null>(null)
   const state = detail.state
 
   const load = useCallback(
@@ -47,6 +48,11 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focus }:
   useEffect(() => {
     if (focus?.path) setOpenPath(focus.path)
   }, [focus])
+
+  // 查看器打开/重开 → 滚动到可视区（否则在长列表下方视口外打开，用户看不见=「点击没反应」）
+  useEffect(() => {
+    if (openPath) viewerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [openPath, focus])
 
   const annotationsFor = (path: string): Annotation[] => detail.annotations.filter((a) => a.artifactPath === path)
 
@@ -147,7 +153,7 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focus }:
       })}
 
       {openPath && (
-        <div className="artifact-viewer">
+        <div key={openPath} ref={viewerRef} className="artifact-viewer">
           <div className="viewer-head">
             <code>{openPath}</code>
             <button className="icon-btn" onClick={() => setOpenPath(null)}>
