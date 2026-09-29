@@ -1,0 +1,17 @@
+[
+  {
+    "id": "skill_3323eaca9cvm",
+    "name": "边界用例前置检查",
+    "pattern": "涉及积分/额度/过期等有边界语义的规则改动",
+    "guidance": "涉及「过期/清零/阈值」类规则时，test-design 阶段必须前置覆盖：自然月边界、月末/月初切换、零余额、历史遗留数据四类边界用例，避免审核门因测试覆盖不足驳回。",
+    "scope": {
+      "repo": "membership-center",
+      "module": "membership-points"
+    },
+    "status": "candidate",
+    "version": 0,
+    "sourceTaskId": "task-100",
+    "proposedAt": "2026-09-28T03:12:31.090Z",
+    "proposedBy": "skillDistiller"
+  }
+]

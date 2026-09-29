@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+*.tmp
+
+# 运行数据不进 git：任务工作区（含各任务内嵌 .git）、投影、调度状态、认证令牌
+# 注意：/data/ 锚定根目录（旧布局残留）；apps/server/data/assets 是源码资产（剧本/技能库），保留提交
+/data/
+apps/server/data/runtime/
+
+*.log
+.DS_Store

@@ -1,0 +1,22 @@
+{
+  "skills": [
+    {
+      "id": "skill_662a9a299cvm",
+      "name": "推送限流规则",
+      "pattern": "涉及消息推送 / PushService / 通知渠道的改动",
+      "guidance": "高频推送必须经 PushService 统一限流（默认 100 条/秒，可按渠道配置），并在发送侧做批量合并；否则会触发网关熔断，导致会员中心批量推送失败。降级路径：App 内信失败时降级短信兜底，同样需限流。",
+      "scope": {
+        "repo": "membership-center",
+        "module": "membership-points"
+      },
+      "status": "active",
+      "version": 1,
+      "sourceTaskId": "task-100",
+      "proposedAt": "2026-09-28T03:12:31.090Z",
+      "proposedBy": "skillDistiller",
+      "adoptedAt": "2026-09-28T12:10:06.880Z",
+      "adoptedBy": "admin"
+    }
+  ],
+  "version": 1
+}
