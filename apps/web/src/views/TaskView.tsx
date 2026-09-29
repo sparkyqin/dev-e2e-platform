@@ -1,17 +1,17 @@
 /**
  * 任务工作台（两栏制 · Linear/GitHub PR/mae-flow 模式）：
- * - hero：标题行（身份+状态徽标）+ 现状行（一句话「现在怎么样、在等谁」）+ 紧凑阶段条（进度指示器）
- * - 主栏页签：动态（默认，人话时间线）· 材料（产物与批注）· 看板（9 阶段全景 + 历程）
+ * - hero：标题行（身份+状态徽标）+ 现状行（一句话「现在怎么样、在等谁」）；业务流不占 hero——统一收口看板页签
+ * - 主栏页签：动态（默认，人话时间线）· 材料（产物与批注）· 看板（两段分组六段全景 + 历程）
  * - 右栏（行动优先）：等门时 GateCard 置顶为唯一亮色焦点；无事时一行静默提示；随后 MR 面板 + 任务信息
  * - SSE：GET /api/tasks/:id/events/stream（events 追加 / state 刷新 / notification 通知）
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { SemanticEvent, StageId, TaskDetail, TaskState } from '@ai-platform/shared'
+import type { SemanticEvent, TaskDetail, TaskState } from '@ai-platform/shared'
 import { GATE_META } from '@ai-platform/shared'
 import { api } from '../api'
 import { useApp } from '../store'
 import { HEALTH_META, STATUS_META, fmtRel, stageLabel } from '../format'
-import PipelineBoard, { PipelineStrip } from '../components/PipelineBoard'
+import PipelineBoard from '../components/PipelineBoard'
 import GateCard from '../components/GateCard'
 import SessionStream from '../components/SessionStream'
 import ArtifactsPanel from '../components/ArtifactsPanel'
@@ -20,6 +20,8 @@ import TaskRail from '../components/TaskRail'
 import JourneyPanel from '../components/JourneyPanel'
 
 type MidTab = 'session' | 'materials' | 'board'
+
+/** 当前任务所处段（设计段/执行段）：hero 现状行的段速览（业务流全景在看板页签） */
 
 /** 现状行：一句话回答「现在怎么样、在等谁」（mae-flow 下一步/责任 模式；把徽标/阶段/门等散落状态合成一句） */
 export function NowLine({ state }: { state: TaskState }): React.JSX.Element {
@@ -126,8 +128,6 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
   const [tab, setTab] = useState<MidTab>('session')
   /** 看板产物卡 → 材料页的焦点请求；nonce 保证重复点击同一产物也能重新打开（同值 bail-out 规避） */
   const [focus, setFocus] = useState<{ path: string | null; nonce: number }>({ path: null, nonce: 0 })
-  /** 紧凑条阶段 → 看板页的定位请求；nonce 同理 */
-  const [boardFocus, setBoardFocus] = useState<{ sid: StageId | null; nonce: number }>({ sid: null, nonce: 0 })
   const lastSeqRef = useRef(0)
   const detailTimer = useRef<number | null>(null)
 
@@ -135,12 +135,6 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
   const openArtifact = useCallback((path: string | null): void => {
     setFocus((f) => ({ path, nonce: f.nonce + 1 }))
     setTab('materials')
-  }, [])
-
-  /** 紧凑条阶段 → 看板页直达（切页签 + 滚动定位到该列） */
-  const openBoard = useCallback((sid: StageId): void => {
-    setBoardFocus((f) => ({ sid, nonce: f.nonce + 1 }))
-    setTab('board')
   }, [])
 
   const mergeEvents = useCallback((incoming: SemanticEvent[]): void => {
@@ -296,7 +290,6 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
           )}
         </div>
         <NowLine state={state} />
-        <PipelineStrip state={state} events={events} onOpenBoard={openBoard} />
       </header>
 
       <div className="task-cols">
@@ -308,7 +301,7 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
             <button className={tab === 'materials' ? 'on' : ''} onClick={() => setTab('materials')} title="产物分区与批注">
               材料（{state.artifacts.length}）
             </button>
-            <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')} title="9 阶段全景 · 产物卡 · 门足迹 · 历程">
+            <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')} title="两段分组业务流全景 · 产物卡 · 门足迹 · 历程">
               看板
             </button>
           </div>
@@ -320,7 +313,7 @@ export default function TaskView({ taskId }: { taskId: string }): React.JSX.Elem
           )}
           {tab === 'board' && (
             <div className="board-tab">
-              <PipelineBoard state={state} events={events} onOpenArtifact={openArtifact} focus={boardFocus} />
+              <PipelineBoard state={state} events={events} onOpenArtifact={openArtifact} />
               <JourneyPanel journey={detail.journey} />
             </div>
           )}

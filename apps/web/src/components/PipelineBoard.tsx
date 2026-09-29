@@ -1,12 +1,11 @@
 /**
- * 任务看板（双形态，multica 惯例：看板是钻取视图，不占首屏）：
- * - PipelineStrip：hero 常驻的紧凑一行 = 进度指示器（状态点/阶段名/产物数/R 轮次/当前状态图标）；
- *   点任一阶段 → onOpenBoard(sid) 切到看板页签并定位该列
- * - PipelineBoard（默认导出，看板页签）：列 = 阶段 · 卡 = 产物 · 门决策足迹；
- *   focus（外部注入，nonce 允许重复定位同一列）驱动滚动到目标列
+ * 任务看板（multica 惯例：看板是钻取视图，不占首屏）：
+ * - PipelineStrip：紧凑一行 = 进度指示器（状态点/阶段名/产物数/R 轮次/当前状态图标）；
+ *   供 hero 外场景复用（当前未挂载详情页 hero——业务流统一收口看板页签）；点阶段 → onOpenBoard(sid)
+ * - PipelineBoard（默认导出，看板页签）：列 = 阶段 · 卡 = 产物 · 门决策足迹；两段分组横幅（STAGE_PHASES 单源）
  *
  * multica 看板解剖 → 单任务管线映射：
- * - 列 = 状态 → 列 = 阶段（9 阶段主干 + 终态；头部状态点/计数/轮次/👤·AI 署名）
+ * - 列 = 状态 → 列 = 阶段（v2 六段主干；头部状态点/计数/轮次/👤·AI 署名）
  * - 卡 = issue（标题/指派/标签）→ 卡 = 产物（文件名/分区徽标/大小/主权角色；点击直达材料页）
  * - 列状态色 → done（绿）/ current（品牌色，运行中脉冲）/ todo（灰）/ 停止（红）
  * - 足迹 → 每列底部：门决策署名（谁拍板·动作）或当前状态行（AI 作业中/门等待/排队/接管/停止）
@@ -91,9 +90,9 @@ function groupByStage(state: TaskState): Map<StageId, TaskState['artifacts']> {
 }
 
 /**
- * 紧凑条（hero 常驻）：一行阶段 chip = 任务进度指示器。
+ * 紧凑条：一行阶段 chip = 任务进度指示器（复用组件，当前未挂载详情页 hero——业务流统一收口看板页签）。
  * 两段分组横幅（STAGE_PHASES 单源）：设计段（人与AI共创）｜执行段（AI自动化+人审核）。
- * 点击任一阶段 → onOpenBoard(sid)：看板页签定位该列（大看板不占首屏）。
+ * 点击任一阶段 → onOpenBoard(sid)：切看板并定位该列。
  */
 export function PipelineStrip({
   state,
@@ -146,7 +145,7 @@ export function PipelineStrip({
   )
 }
 
-/** 完整看板（看板页签）：列 = 阶段 · 卡 = 产物 · 门足迹；focus 定位目标列 */
+/** 完整看板（看板页签）：列 = 阶段 · 卡 = 产物 · 门足迹；focus（可选）外部定位目标列 */
 export default function PipelineBoard({
   state,
   events,
@@ -167,7 +166,7 @@ export default function PipelineBoard({
   const [moreOpen, setMoreOpen] = useState<Set<StageId>>(new Set())
   const boardRef = useRef<HTMLDivElement | null>(null)
 
-  // 外部定位：滚动到目标列（紧凑条点阶段 → 看板页签 → 这里）
+  // 外部定位（可选）：滚动到目标列
   useEffect(() => {
     if (!focus?.sid || !boardRef.current) return
     const el = boardRef.current.querySelector<HTMLElement>(`[data-sid="${focus.sid}"]`)
@@ -175,20 +174,14 @@ export default function PipelineBoard({
   }, [focus])
 
   return (
-    <div className="pipeline-board" ref={boardRef}>
-      {/* 两段分组横幅（顶部一行）：设计段（人与AI共创）｜执行段（AI自动化+人审核） */}
-      <div className="pipe-phases-banner" role="group" aria-label="阶段两段分组">
-        {STAGE_PHASES.map((g) => (
-          <span key={g.id} className={`pipe-phase ${g.id}`} title={`${g.label}：${g.hint}`}>
-            <span className={`pipe-phase-dot ${g.id}`} />
-            <span className="pipe-phase-label">{g.label}</span>
-            <span className="pipe-phase-hint">{g.hint}</span>
-          </span>
-        ))}
-      </div>
-      <div className="pipeline-board-cols" role="list">
+    <div className="pipeline-board" ref={boardRef} role="list">
       {STAGE_PHASES.map((g) => (
         <div key={g.id} className={`pipe-col-group ${g.id}`} role="group" aria-label={g.label}>
+          <div className="pipe-col-group-head" title={`${g.label}：${g.hint}`}>
+            <span className={`pipe-col-group-dot ${g.id}`} />
+            <span className="pipe-col-group-label">{g.label}</span>
+            <span className="pipe-col-group-hint">{g.hint}</span>
+          </div>
           <div className="pipe-col-group-cols">
             {g.stages.map((sid) => {
               const i = STAGE_ORDER.indexOf(sid)
@@ -268,7 +261,6 @@ export default function PipelineBoard({
           </div>
         </div>
       ))}
-      </div>
     </div>
   )
 }

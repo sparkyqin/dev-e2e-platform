@@ -431,8 +431,8 @@ a { color: var(--brand); text-decoration: none; }
 .back { font-size: 17px; color: var(--ink-3); padding: 2px 8px; border-radius: 6px; }
 .back:hover { background: #f0f3fa; color: var(--brand); }
 
-/* 现状行：一句话「现在怎么样、在等谁」（hero 第二行；把徽标/阶段/门等散落状态合成一句） */
-.now-line { display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px; font-size: 13.5px; color: var(--ink); min-width: 0; }
+/* 现状行：一句话「现在怎么样、在等谁」（hero 第二行收尾；把徽标/阶段/门等散落状态合成一句） */
+.now-line { display: flex; align-items: baseline; gap: 8px; padding-bottom: 10px; font-size: 13.5px; color: var(--ink); min-width: 0; }
 .now-icon { flex-shrink: 0; }
 .now-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .now-main b { color: var(--brand); font-weight: 600; }
