@@ -32,7 +32,7 @@ export default function LoginView(): React.JSX.Element {
           <span className="brand-mark xl">AI</span>
           <div>
             <strong>AI 研发平台</strong>
-            <small>需求一句话 → 代码合入</small>
+            <small>需求 → 代码合入</small>
           </div>
         </div>
 

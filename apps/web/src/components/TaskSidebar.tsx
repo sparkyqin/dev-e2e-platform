@@ -1,6 +1,6 @@
 /**
  * 任务侧栏（multica 式属性栏：core 常显 · 配置折叠 · 列表限量）：
- * - core：阶段轮次 / 需求一句话 / 健康警示（green 不渲染，头部健康点已有）
+ * - core：阶段轮次 / 需求描述 / 健康警示（green 不渲染，头部健康点已有）
  * - 任务属性（开发方式/模板/剧本/引擎/Token）收进折叠区——低频只读配置
  * - 干系人：责任人+需求方常显，其余折叠；历程：默认最近 8 条，按需展开全部
  */
@@ -76,7 +76,7 @@ export default function TaskSidebar({
             </dd>
           </div>
           <div>
-            <dt>需求一句话</dt>
+            <dt>需求描述</dt>
             <dd className="req-text">{state.requirementText}</dd>
           </div>
           {state.health.level !== 'green' && (

@@ -42,7 +42,7 @@ function TopBar(): React.JSX.Element {
         <span className="brand-mark">AI</span>
         <span className="brand-text">
           <strong>AI 研发平台</strong>
-          <small>需求一句话 → 代码合入</small>
+          <small>需求 → 代码合入</small>
         </span>
       </a>
       <nav className="topbar-nav" aria-label="主导航">

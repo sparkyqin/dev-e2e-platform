@@ -79,7 +79,7 @@ function jobInstruction(input: PromptInput): string {
     case 'clarify':
       return [
         '## 本次作业要求',
-        '1. 把一句话需求做三级分解（IR→SR→AR），按管理对象拆分 SR，落成可单点实现、可单点验收的原子项。',
+        '1. 把需求做三级分解（IR→SR→AR），按管理对象拆分 SR，落成可单点实现、可单点验收的原子项。',
         '2. 产物写入 `process/clarify-ir-sr-ar.md`；业务决策记录写入 `process/decisions.json`（必须是数组：`[{"topic":"主题","decision":"结论","ts":"ISO 时间"}]`，不要包一层对象）。',
         '3. 遇到无法从知识库推断的业务事实，不要编造：整理成问题清单。',
         '4. `.flow/stage-output.json` 写：',

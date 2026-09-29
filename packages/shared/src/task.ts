@@ -86,7 +86,7 @@ export interface TaskState {
   title: string
   module: string
   repo: string
-  /** 一句话需求原文 */
+  /** 需求原文 */
   requirementText: string
   mode: DevMode
   paradigm: 'single-center' | 'tri-partite'

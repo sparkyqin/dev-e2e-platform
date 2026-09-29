@@ -135,9 +135,9 @@ export const STAGES: Record<StageId, StageMeta> = {
     no: 2,
     label: '需求澄清',
     shortLabel: '澄清',
-    desc: '成组质询、消除歧义、记决策；一句话落成可验收原子项，可结构化为 IR→SR→AR 三级分解',
+    desc: '成组质询、消除歧义、记决策；需求落成可验收原子项，可结构化为 IR→SR→AR 三级分解',
     automatable: true,
-    exitCondition: '一句话已落成可验收原子项；业务事实有决策记录（事实门全决或降级标记待追认）',
+    exitCondition: '需求已落成可验收原子项；业务事实有决策记录（事实门全决或降级标记待追认）',
     jobs: [
       {
         id: 'clarify',

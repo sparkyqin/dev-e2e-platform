@@ -46,7 +46,7 @@ export default function TasksView(): React.JSX.Element {
         </div>
         {view === 'grid' ? (
           <div className="task-grid">
-            {cards.length === 0 && <div className="empty-big">还没有任务。点「新建任务」用一句话需求开张。</div>}
+            {cards.length === 0 && <div className="empty-big">还没有任务。点「新建任务」创建第一个任务。</div>}
             {cards.map((c) => (
               <TaskCardItem key={c.taskId} card={c} onOpen={open} />
             ))}

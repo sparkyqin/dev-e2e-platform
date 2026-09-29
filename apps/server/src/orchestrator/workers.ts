@@ -167,7 +167,7 @@ async function clarifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
 
   const directives = await consumeInstructions(platform, taskId)
   const res = await runEngine(platform, state, 'clarify', {
-    purpose: 'IR→SR→AR 三级分解：一句话落成可验收原子项',
+    purpose: 'IR→SR→AR 三级分解：需求落成可验收原子项',
     fixDirectives: directives,
     injectedKnowledge: knowledge,
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },

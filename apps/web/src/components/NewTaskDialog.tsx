@@ -1,5 +1,5 @@
 /**
- * 新建任务（一句话需求进平台）——参考 mae-flow LaunchWorkspace 模式适配：
+ * 新建任务——参考 mae-flow LaunchWorkspace 模式适配：
  * - 编号分区（1 需求 / 2 干系人 / 3 方式与模板）：常用路径一眼见核心字段
  * - 开发方式卡片单选组：描述可见可比较（文案单源拆自 DEV_MODE_LABEL）
  * - 草稿自动保存（localStorage 防抖 400ms，关弹窗不丢；创建成功即清）
@@ -173,7 +173,7 @@ export default function NewTaskDialog({ onClose, onCreated }: { onClose: () => v
     <div className="modal-mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <header>
-          <h2>新建任务 · 一句话需求</h2>
+          <h2>新建任务</h2>
           <span className="draft-chip">
             {draftState === 'restored' && <span>已恢复上次草稿</span>}
             {draftState === 'saved' && <span className="saved">✓ 草稿已自动保存</span>}
@@ -203,7 +203,7 @@ export default function NewTaskDialog({ onClose, onCreated }: { onClose: () => v
           </label>
           <label className={`field ${errOf(form.requirementText) ? 'field-err' : ''}`}>
             <span>
-              需求一句话 <em className="req-star">*</em>
+              需求描述 <em className="req-star">*</em>
             </span>
             <textarea
               ref={reqRef}
