@@ -11,6 +11,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 本机 Windows 文件事件不可靠（styles.css 两次漏编辑事件 → 浏览器旧 CSS + 新 DOM 混搭）
+    // 改用轮询监听，以微小 CPU 开销换确定性热更新
+    watch: { usePolling: true, interval: 400 },
     proxy: {
       '/api': { target: 'http://localhost:8787', changeOrigin: true },
     },
