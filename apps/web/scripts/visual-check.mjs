@@ -103,10 +103,25 @@ const railProbe = `(() => {
   const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } }
   const cols = document.querySelector('.task-cols'); const rail = document.querySelector('.col-rail'); const mid = document.querySelector('.col-mid')
   if (!cols) return { error: 'no .task-cols (登录失败？非任务页？)' }
+  // 两段分组横幅（设计段/执行段）：紧凑条分组 + 看板列分组
+  const stripGroups = [...document.querySelectorAll('.pipe-compact .pipe-group')].map((g) => ({
+    cls: g.className,
+    label: g.querySelector('.pipe-group-label')?.textContent,
+    chips: g.querySelectorAll('.pipe-chip').length,
+  }))
+  const boardGroups = [...document.querySelectorAll('.pipeline-board .pipe-col-group')].map((g) => ({
+    cls: g.className,
+    label: g.querySelector('.pipe-col-group-label')?.textContent,
+    cols: g.querySelectorAll('.pipe-col').length,
+  }))
   return {
     viewport: innerWidth + 'x' + innerHeight,
     grid: getComputedStyle(cols).gridTemplateColumns,
     mid: r(mid), rail: r(rail),
+    stripGroups, boardGroups,
+    stripGroupCount: stripGroups.length, boardGroupCount: boardGroups.length,
+    stripChipTotal: stripGroups.reduce((a, g) => a + g.chips, 0),
+    boardColTotal: boardGroups.reduce((a, g) => a + g.cols, 0),
     railScrollHeight: rail ? rail.scrollHeight : null,
     railPanels: [...document.querySelectorAll('.col-rail .panel h3')].map((h) => h.textContent),
     gateCard: !!document.querySelector('.col-rail .gate-card'),

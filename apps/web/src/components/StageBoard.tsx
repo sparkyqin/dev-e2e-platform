@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SemanticEvent, StageId, TaskCard } from '@ai-platform/shared'
-import { STAGES, STAGE_ORDER } from '@ai-platform/shared'
+import { STAGES, STAGE_ORDER, STAGE_PHASES } from '@ai-platform/shared'
 import GateCard from './GateCard'
 import { api } from '../api'
 import { useApp } from '../store'
@@ -79,48 +79,59 @@ export default function StageBoard({ cards, onOpen }: Props): React.JSX.Element 
 
   return (
     <div className="stage-board">
-      {STAGE_ORDER.map((stage) => {
-        const meta = STAGES[stage]
-        const list = byStage.get(stage) ?? []
-        return (
-          <section
-            key={stage}
-            className={`board-col ${dragOver === stage ? 'drag-over' : ''}`}
-            data-stage={stage}
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('text/task-id')) {
-                e.preventDefault()
-                setDragOver(stage)
-              }
-            }}
-            onDragLeave={() => setDragOver((s) => (s === stage ? null : s))}
-            onDrop={(e) => {
-              const taskId = e.dataTransfer.getData('text/task-id')
-              if (taskId) handleDrop(stage, taskId)
-            }}
-          >
-            <header className="board-col-head" title={`${meta.desc}\n退出条件：${meta.exitCondition}`}>
-              <span className="board-col-no">{meta.no}</span>
-              <span className="board-col-title">{meta.shortLabel}</span>
-              <span className="board-col-count">{list.length}</span>
-              {meta.automatable && <span className="board-col-auto" title="主体工作 AI 可自动推进">AI</span>}
-            </header>
-            <div className="board-col-body">
-              {list.map((c) => (
-                <BoardCard
-                  key={c.taskId}
-                  card={c}
-                  onOpen={onOpen}
-                  onQuickDecide={() => setQuickDecideId(c.taskId)}
-                  onPeekEnter={() => peekEnter(c.taskId)}
-                  onPeekLeave={peekLeave}
-                />
-              ))}
-              {list.length === 0 && <div className="board-col-empty">—</div>}
-            </div>
-          </section>
-        )
-      })}
+      {STAGE_PHASES.map((g) => (
+        <div key={g.id} className={`board-col-group ${g.id}`} role="group" aria-label={g.label}>
+          <div className="board-group-head" title={`${g.label}：${g.hint}`}>
+            <span className={`board-group-dot ${g.id}`} />
+            <span className="board-group-label">{g.label}</span>
+            <span className="board-group-hint">{g.hint}</span>
+          </div>
+          <div className="board-group-cols">
+            {g.stages.map((stage) => {
+              const meta = STAGES[stage]
+              const list = byStage.get(stage) ?? []
+              return (
+                <section
+                  key={stage}
+                  className={`board-col ${dragOver === stage ? 'drag-over' : ''}`}
+                  data-stage={stage}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes('text/task-id')) {
+                      e.preventDefault()
+                      setDragOver(stage)
+                    }
+                  }}
+                  onDragLeave={() => setDragOver((s) => (s === stage ? null : s))}
+                  onDrop={(e) => {
+                    const taskId = e.dataTransfer.getData('text/task-id')
+                    if (taskId) handleDrop(stage, taskId)
+                  }}
+                >
+                  <header className="board-col-head" title={`${meta.desc}\n退出条件：${meta.exitCondition}`}>
+                    <span className="board-col-no">{meta.no}</span>
+                    <span className="board-col-title">{meta.shortLabel}</span>
+                    <span className="board-col-count">{list.length}</span>
+                    {meta.automatable && <span className="board-col-auto" title="主体工作 AI 可自动推进">AI</span>}
+                  </header>
+                  <div className="board-col-body">
+                    {list.map((c) => (
+                      <BoardCard
+                        key={c.taskId}
+                        card={c}
+                        onOpen={onOpen}
+                        onQuickDecide={() => setQuickDecideId(c.taskId)}
+                        onPeekEnter={() => peekEnter(c.taskId)}
+                        onPeekLeave={peekLeave}
+                      />
+                    ))}
+                    {list.length === 0 && <div className="board-col-empty">—</div>}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+        </div>
+      ))}
       {quickDecideId && <QuickDecide taskId={quickDecideId} onClose={() => setQuickDecideId(null)} onDecided={refreshCards} />}
       {peekId && !quickDecideId && (
         <BoardPeek

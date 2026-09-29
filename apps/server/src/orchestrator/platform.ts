@@ -389,9 +389,11 @@ export class Platform {
                   ? 'owner'
                   : rel === 'delivery/test-design.md' && st.completedStages.includes('test-design')
                     ? 'owner'
-                    : rel === CONTRACT_PATH
+                    : rel === 'delivery/requirement.md' && st.completedStages.includes('requirement')
                       ? 'owner'
-                      : STAGE_SOVEREIGNTY[prev?.stage ?? st.stage]
+                      : rel === CONTRACT_PATH
+                        ? 'owner'
+                        : STAGE_SOVEREIGNTY[prev?.stage ?? st.stage]
             const entry = {
               path: rel,
               partition: am.partitionOf(rel),
@@ -460,7 +462,7 @@ export class Platform {
           st.requirementText,
           ...(
             await Promise.all(
-              ['delivery/architecture.md', 'delivery/spec.md', 'delivery/design.md', 'delivery/test-design.md'].map((p) => am.read(p)),
+              ['delivery/requirement.md', 'delivery/architecture.md', 'delivery/spec.md', 'delivery/design.md', 'delivery/test-design.md'].map((p) => am.read(p)),
             )
           ).map((c) => c ?? ''),
         ].filter(Boolean),

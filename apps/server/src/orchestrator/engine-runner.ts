@@ -4,6 +4,7 @@ import type { StageId } from '@ai-platform/shared'
 import { newId, readJsonTolerant, toRecordArray, toStringArray } from '../domain/util.js'
 import type { StageOutput } from '../engine/types.js'
 import type { AiEngine } from '../engine/types.js'
+import { stageOutputPath } from '../engine/types.js'
 import { renderInstruction } from '../engine/stage-prompts.js'
 import type { Platform } from './platform.js'
 import type { TaskState } from '@ai-platform/shared'
@@ -132,7 +133,10 @@ export async function runEngine(platform: Platform, state: TaskState, job: strin
 
   // 产出裁决：读文件证据（形状归一化后再交消费端——指令钉形状 + 读取兜底双保险）。
   // 引擎写的文件宽容读取（损坏≈无产出 → 走重试/失败语义，不让坏 JSON 直接崩 worker）
-  const raw = await readJsonTolerant<StageOutput>(path.join(platform.store.flowDir(taskId), 'stage-output.json'))
+  // per-job 优先；旧版单文件兜底（升级时 in-flight 任务可能仍写旧路径）
+  const raw =
+    (await readJsonTolerant<StageOutput>(path.join(platform.store.flowDir(taskId), '..', stageOutputPath(job)))) ??
+    (await readJsonTolerant<StageOutput>(path.join(platform.store.flowDir(taskId), 'stage-output.json')))
   const output = normalizeStageOutput(raw)
 
   return { output, completed, interrupted, failed, failureSummary }
@@ -171,6 +175,7 @@ export function normalizeStageOutput(raw: StageOutput | null): StageOutput {
   }
   if (r.claimedFiles != null) out.claimedFiles = toStringArray(r.claimedFiles)
   if (r.findings != null) out.findings = toStringArray(r.findings)
+  if (r.files != null) out.files = toStringArray(r.files)
   if (r.dispatchIds != null) out.dispatchIds = toStringArray(r.dispatchIds, { splitComma: true })
   if (r.verdict != null) out.verdict = str(r.verdict)
   if (r.summary != null) out.summary = str(r.summary)
@@ -179,11 +184,13 @@ export function normalizeStageOutput(raw: StageOutput | null): StageOutput {
   return out as StageOutput
 }
 
-/** 读 stage-output 后清理（避免下一轮误读旧产出） */
-export async function clearStageOutput(platform: Platform, taskId: string): Promise<void> {
-  const file = path.join(platform.store.flowDir(taskId), 'stage-output.json')
+/** 读 stage-output 后清理（避免下一轮误读旧产出；per-job + 旧版单文件一并清） */
+export async function clearStageOutput(platform: Platform, taskId: string, job?: string): Promise<void> {
+  const files = job
+    ? [path.join(platform.store.flowDir(taskId), '..', stageOutputPath(job))]
+    : [path.join(platform.store.flowDir(taskId), 'stage-output.json')]
   try {
-    await fs.rm(file, { force: true })
+    for (const file of files) await fs.rm(file, { force: true })
   } catch {
     // ignore
   }

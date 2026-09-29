@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GateAction, SemanticEvent, StageId, TaskState } from '@ai-platform/shared'
-import { GATE_META, STAGES, STAGE_ORDER } from '@ai-platform/shared'
+import { GATE_META, STAGES, STAGE_ORDER, STAGE_PHASES } from '@ai-platform/shared'
 import { fmtBytes, fmtTime } from '../format'
 
 const ACTION_LABEL: Record<GateAction, string> = {
@@ -92,6 +92,7 @@ function groupByStage(state: TaskState): Map<StageId, TaskState['artifacts']> {
 
 /**
  * 紧凑条（hero 常驻）：一行阶段 chip = 任务进度指示器。
+ * 两段分组横幅（STAGE_PHASES 单源）：设计段（人与AI共创）｜执行段（AI自动化+人审核）。
  * 点击任一阶段 → onOpenBoard(sid)：看板页签定位该列（大看板不占首屏）。
  */
 export function PipelineStrip({
@@ -109,30 +110,38 @@ export function PipelineStrip({
 
   return (
     <div className="pipe-compact" role="list">
-      {STAGE_ORDER.map((sid, i) => {
-        const meta = STAGES[sid]
-        const arts = byStage.get(sid) ?? []
-        const rounds = state.stageRounds[sid] ?? 0
-        const st = i < cur ? 'done' : i === cur ? 'current' : 'todo'
-        const trace = traces.get(sid)
-        const gateHint = trace?.gate ? `；${trace.gate.byName}·${ACTION_LABEL[trace.gate.action]}` : ''
-        return (
-          <button
-            key={sid}
-            className={`pipe-chip ${st} ${state.status === 'failed' && st === 'current' ? 'failed' : ''}`}
-            onClick={() => onOpenBoard(sid)}
-            title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}\n本段知识：${meta.skills?.map((sk) => sk.label).join('、') ?? '—'}\n产物 ${arts.length} 个${gateHint}\n点击到看板查看产物卡与门足迹`}
-            role="listitem"
-          >
-            <span className={`pipe-dot ${st === 'current' && state.status === 'running' ? 'running' : ''}`} />
-            <span className="pipe-chip-name">{meta.shortLabel}</span>
-            {rounds > 1 && <span className="pipe-rounds">R{rounds}</span>}
-            {trace?.rolledBack && <span className="pipe-rollback">↩</span>}
-            {arts.length > 0 && <span className="pipe-chip-count">{arts.length}</span>}
-            {st === 'current' && <span className="pipe-chip-status">{currentStatusIcon(state)}</span>}
-          </button>
-        )
-      })}
+      {STAGE_PHASES.map((g) => (
+        <div key={g.id} className={`pipe-group ${g.id}`} role="group" aria-label={g.label} title={`${g.label}：${g.hint}`}>
+          <span className="pipe-group-label">{g.label}</span>
+          <div className="pipe-group-chips">
+            {g.stages.map((sid) => {
+              const i = STAGE_ORDER.indexOf(sid)
+              const meta = STAGES[sid]
+              const arts = byStage.get(sid) ?? []
+              const rounds = state.stageRounds[sid] ?? 0
+              const st = i < cur ? 'done' : i === cur ? 'current' : 'todo'
+              const trace = traces.get(sid)
+              const gateHint = trace?.gate ? `；${trace.gate.byName}·${ACTION_LABEL[trace.gate.action]}` : ''
+              return (
+                <button
+                  key={sid}
+                  className={`pipe-chip ${st} ${state.status === 'failed' && st === 'current' ? 'failed' : ''}`}
+                  onClick={() => onOpenBoard(sid)}
+                  title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}\n本段知识：${meta.skills?.map((sk) => sk.label).join('、') ?? '—'}\n产物 ${arts.length} 个${gateHint}\n点击到看板查看产物卡与门足迹`}
+                  role="listitem"
+                >
+                  <span className={`pipe-dot ${st === 'current' && state.status === 'running' ? 'running' : ''}`} />
+                  <span className="pipe-chip-name">{meta.shortLabel}</span>
+                  {rounds > 1 && <span className="pipe-rounds">R{rounds}</span>}
+                  {trace?.rolledBack && <span className="pipe-rollback">↩</span>}
+                  {arts.length > 0 && <span className="pipe-chip-count">{arts.length}</span>}
+                  {st === 'current' && <span className="pipe-chip-status">{currentStatusIcon(state)}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -167,80 +176,92 @@ export default function PipelineBoard({
 
   return (
     <div className="pipeline-board" ref={boardRef} role="list">
-      {STAGE_ORDER.map((sid, i) => {
-        const meta = STAGES[sid]
-        const arts = byStage.get(sid) ?? []
-        const rounds = state.stageRounds[sid] ?? 0
-        const st = i < cur ? 'done' : i === cur ? 'current' : 'todo'
-        const trace = traces.get(sid)
-        const running = st === 'current' && state.status === 'running'
-        return (
-          <section key={sid} data-sid={sid} className={`pipe-col ${st} ${state.status === 'failed' && st === 'current' ? 'failed' : ''}`} role="listitem">
-            <header className="pipe-head" title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}`}>
-              <span className={`pipe-dot ${running ? 'running' : ''}`} />
-              <span className="pipe-name">{meta.shortLabel}</span>
-              <span className="pipe-tag" title={meta.automatable ? '主体工作 AI 可自动推进' : '人工阶段（铁门拍板）'}>
-                {meta.automatable ? 'AI' : '👤'}
-              </span>
-              {rounds > 1 && (
-                <span className="pipe-rounds" title={`第 ${rounds} 轮（回退重做，不从头跑）`}>
-                  R{rounds}
-                </span>
-              )}
-              {trace?.rolledBack && <span className="pipe-rollback" title="曾被声明式回退到本阶段">↩</span>}
-              {arts.length > 0 && <span className="pipe-count" title={`${arts.length} 个产物`}>{arts.length}</span>}
-            </header>
-            {meta.skills && meta.skills.length > 0 && (
-              <div className="pipe-skills" title={meta.skills.map((sk) => `${sk.label}——${sk.desc}`).join('\n')}>
-                <span className="pipe-skills-k">知识</span>
-                {meta.skills.map((sk) => (
-                  <span key={sk.id} className="pipe-skill-tag">{sk.label}</span>
-                ))}
-              </div>
-            )}
-            <div className="pipe-body">
-              {st === 'current' && <CurrentStatusLine state={state} />}
-              {(moreOpen.has(sid) ? arts : arts.slice(0, 3)).map((a) => (
-                <button key={a.path} className={`pipe-card ${PARTITION_CLS[a.partition] ?? 'pp-process'}`} onClick={() => onOpenArtifact(a.path)} title={`${a.path}\n${a.partition} 区 · 主权 ${a.sovereignRole} · ${fmtBytes(a.bytes)} · ${fmtTime(a.updatedAt)}\n点击在材料页查看内容`}>
-                  <span className="pipe-card-dot" />
-                  <span className="pipe-card-name">{a.path.split('/').pop()}</span>
-                  <span className="pipe-card-bytes">{fmtBytes(a.bytes)}</span>
-                </button>
-              ))}
-              {arts.length > 3 && (
-                <button
-                  className="pipe-more"
-                  onClick={() =>
-                    setMoreOpen((s) => {
-                      const n = new Set(s)
-                      if (n.has(sid)) n.delete(sid)
-                      else n.add(sid)
-                      return n
-                    })
-                  }
-                  title={`原地展开该阶段全部 ${arts.length} 个产物`}
-                >
-                  {moreOpen.has(sid) ? '收起' : `+${arts.length - 3} 更多…`}
-                </button>
-              )}
-              {st === 'todo' && arts.length === 0 && <span className="pipe-empty">—</span>}
-            </div>
-            <footer className="pipe-foot">
-              {st === 'done' || (trace?.gate && i < cur) ? (
-                trace?.gate ? (
-                  <span className="pipe-gate-trace" title={`${trace.gate.byName} 于 ${fmtTime(trace.gate.at)} 拍板`}>
-                    ⚖ {trace.gate.byName}·{ACTION_LABEL[trace.gate.action]}
-                  </span>
-                ) : (
-                  <span className="pipe-done-mark">✓ 完成</span>
-                )
-              ) : st === 'todo' ? (
-                <span className="pipe-foot-dim">待进入</span>
-              ) : null}
-            </footer>
-          </section>
-        )
-      })}
+      {STAGE_PHASES.map((g) => (
+        <div key={g.id} className={`pipe-col-group ${g.id}`} role="group" aria-label={g.label}>
+          <div className="pipe-col-group-head" title={`${g.label}：${g.hint}`}>
+            <span className={`pipe-col-group-dot ${g.id}`} />
+            <span className="pipe-col-group-label">{g.label}</span>
+            <span className="pipe-col-group-hint">{g.hint}</span>
+          </div>
+          <div className="pipe-col-group-cols">
+            {g.stages.map((sid) => {
+              const i = STAGE_ORDER.indexOf(sid)
+              const meta = STAGES[sid]
+              const arts = byStage.get(sid) ?? []
+              const rounds = state.stageRounds[sid] ?? 0
+              const st = i < cur ? 'done' : i === cur ? 'current' : 'todo'
+              const trace = traces.get(sid)
+              const running = st === 'current' && state.status === 'running'
+              return (
+                <section key={sid} data-sid={sid} className={`pipe-col ${st} ${state.status === 'failed' && st === 'current' ? 'failed' : ''}`} role="listitem">
+                  <header className="pipe-head" title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}`}>
+                    <span className={`pipe-dot ${running ? 'running' : ''}`} />
+                    <span className="pipe-name">{meta.shortLabel}</span>
+                    <span className="pipe-tag" title={meta.automatable ? '主体工作 AI 可自动推进' : '人工阶段（铁门拍板）'}>
+                      {meta.automatable ? 'AI' : '👤'}
+                    </span>
+                    {rounds > 1 && (
+                      <span className="pipe-rounds" title={`第 ${rounds} 轮（回退重做，不从头跑）`}>
+                        R{rounds}
+                      </span>
+                    )}
+                    {trace?.rolledBack && <span className="pipe-rollback" title="曾被声明式回退到本阶段">↩</span>}
+                    {arts.length > 0 && <span className="pipe-count" title={`${arts.length} 个产物`}>{arts.length}</span>}
+                  </header>
+                  {meta.skills && meta.skills.length > 0 && (
+                    <div className="pipe-skills" title={meta.skills.map((sk) => `${sk.label}——${sk.desc}`).join('\n')}>
+                      <span className="pipe-skills-k">知识</span>
+                      {meta.skills.map((sk) => (
+                        <span key={sk.id} className="pipe-skill-tag">{sk.label}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pipe-body">
+                    {st === 'current' && <CurrentStatusLine state={state} />}
+                    {(moreOpen.has(sid) ? arts : arts.slice(0, 3)).map((a) => (
+                      <button key={a.path} className={`pipe-card ${PARTITION_CLS[a.partition] ?? 'pp-process'}`} onClick={() => onOpenArtifact(a.path)} title={`${a.path}\n${a.partition} 区 · 主权 ${a.sovereignRole} · ${fmtBytes(a.bytes)} · ${fmtTime(a.updatedAt)}\n点击在材料页查看内容`}>
+                        <span className="pipe-card-dot" />
+                        <span className="pipe-card-name">{a.path.split('/').pop()}</span>
+                        <span className="pipe-card-bytes">{fmtBytes(a.bytes)}</span>
+                      </button>
+                    ))}
+                    {arts.length > 3 && (
+                      <button
+                        className="pipe-more"
+                        onClick={() =>
+                          setMoreOpen((s) => {
+                            const n = new Set(s)
+                            if (n.has(sid)) n.delete(sid)
+                            else n.add(sid)
+                            return n
+                          })
+                        }
+                        title={`原地展开该阶段全部 ${arts.length} 个产物`}
+                      >
+                        {moreOpen.has(sid) ? '收起' : `+${arts.length - 3} 更多…`}
+                      </button>
+                    )}
+                    {st === 'todo' && arts.length === 0 && <span className="pipe-empty">—</span>}
+                  </div>
+                  <footer className="pipe-foot">
+                    {st === 'done' || (trace?.gate && i < cur) ? (
+                      trace?.gate ? (
+                        <span className="pipe-gate-trace" title={`${trace.gate.byName} 于 ${fmtTime(trace.gate.at)} 拍板`}>
+                          ⚖ {trace.gate.byName}·{ACTION_LABEL[trace.gate.action]}
+                        </span>
+                      ) : (
+                        <span className="pipe-done-mark">✓ 完成</span>
+                      )
+                    ) : st === 'todo' ? (
+                      <span className="pipe-foot-dim">待进入</span>
+                    ) : null}
+                  </footer>
+                </section>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

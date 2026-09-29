@@ -13,9 +13,9 @@ export interface User {
 }
 
 export const USERS: User[] = [
-  { userId: 'zhangming', name: '张明', role: '需求方 PO', tags: ['事实门拍板'] },
+  { userId: 'zhangming', name: '张明', role: '解决方案 SE（需求方）', tags: ['事实门拍板'] },
   { userId: 'wanghao', name: '王浩', role: '开发（责任人）', tags: ['唯一推进者', '测试门拍板'] },
-  { userId: 'liwan', name: '李婉', role: '设计师', tags: ['设计主笔'] },
+  { userId: 'liwan', name: '李婉', role: '解决方案 SE（设计主笔）', tags: ['设计主笔'] },
   { userId: 'chenshu', name: '陈枢', role: '架构师', tags: ['架构门拍板'] },
   { userId: 'wuqian', name: '吴倩', role: 'TSE（测试设计）', tags: ['测试设计门拍板', '聚合验收拍板'] },
   { userId: 'zhaolei', name: '赵磊', role: '评审人', tags: ['评审门拍板'] },
@@ -24,6 +24,9 @@ export const USERS: User[] = [
   { userId: 'liuyang', name: '刘阳', role: '开发', tags: ['AR 并行承接'] },
   { userId: 'chenjing', name: '陈静', role: '开发', tags: ['AR 并行承接'] },
   { userId: 'xulei', name: '徐磊', role: '开发', tags: ['AR 并行承接'] },
+  { userId: 'zhengnan', name: '郑楠', role: '测试工程师', tags: ['测试轨协作'] },
+  { userId: 'sufang', name: '苏芳', role: '测试工程师', tags: ['测试轨协作'] },
+  { userId: 'luoqiming', name: '罗启明', role: 'Harness 工程师', tags: ['自动化用例维护'] },
   { userId: 'admin', name: '管理员', role: '平台管理员', tags: ['可代拍板（留痕）'] },
 ]
 

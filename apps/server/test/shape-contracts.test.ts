@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Playbook, StageId } from '@ai-platform/shared'
-import { STAGES, STAGE_ORDER, isDeclaredOutputPath, renderOutputPath, stageEvidenceOutputs, stageOutputs } from '@ai-platform/shared'
+import { STAGES, STAGE_ORDER, STAGE_PHASES, isDeclaredOutputPath, renderOutputPath, stageEvidenceOutputs, stageOutputs } from '@ai-platform/shared'
 import { toRecordArray, toStringArray } from '../src/domain/util.js'
 import { normalizeStageOutput } from '../src/orchestrator/engine-runner.js'
 import { renderInstruction } from '../src/engine/stage-prompts.js'
@@ -159,11 +159,24 @@ describe('阶段注册表单源（STAGES 声明列一致性）', () => {
   it('证据面产物过滤：过程草稿/派生视图/动态清单不进证据同屏', () => {
     const designEvidence = stageEvidenceOutputs('design').map((o) => o.path)
     expect(designEvidence).toEqual(['delivery/spec.md', 'delivery/design.md', 'delivery/contract/api-contract.json'])
-    const verifyEvidence = stageEvidenceOutputs('execute', ['build', 'test']).map((o) => o.path)
-    expect(verifyEvidence).toEqual(['process/build-r{round}.log', 'process/test-r{round}.md'])
+    const verifyEvidence = stageEvidenceOutputs('execute', ['build', 'test', 'test-case-design']).map((o) => o.path)
+    expect(verifyEvidence).toEqual(['process/test-cases.md', 'process/build-r{round}.log', 'process/test-r{round}.md']) // 按注册表声明顺序（测试轨作业声明在 build/test 之前）
     const allRequirement = stageOutputs('requirement').map((o) => o.path)
     expect(allRequirement).toContain('process/clarify-ir-sr-ar.md') // 全量含草稿，证据面不含
-    expect(stageEvidenceOutputs('requirement').map((o) => o.path)).toEqual(['process/decisions.json'])
+    expect(stageEvidenceOutputs('requirement').map((o) => o.path)).toEqual(['delivery/requirement.md', 'process/decisions.json']) // 按注册表声明顺序
+  })
+
+  it('STAGE_PHASES 两段分组：flatMap 无重无漏覆盖 STAGE_ORDER（设计段=前4段，执行段=后2段）', () => {
+    const flat = STAGE_PHASES.flatMap((g) => [...g.stages])
+    expect(flat).toEqual([...STAGE_ORDER])
+    expect(new Set(flat).size).toBe(flat.length)
+    expect(STAGE_PHASES.map((g) => g.id)).toEqual(['design', 'execute'])
+    expect(STAGE_PHASES[0].stages).toEqual(['requirement', 'architecture', 'design', 'test-design'])
+    expect(STAGE_PHASES[1].stages).toEqual(['execute', 'merged'])
+    for (const g of STAGE_PHASES) {
+      expect(g.label, `${g.id}.label`).toBeTruthy()
+      expect(g.hint, `${g.id}.hint`).toBeTruthy()
+    }
   })
 })
 

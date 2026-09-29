@@ -2,7 +2,7 @@ import type { FeedbackItem, TriageCategory } from '@ai-platform/shared'
 import { applyRollback, canRollbackTo } from '../domain/state-machine.js'
 import { newId, nowIso } from '../domain/util.js'
 import { raiseGate } from './gates.js'
-import { loadDeliveryState, saveDeliveryState, saveExecutePhase } from './workers.js'
+import { clearRailMarkers, loadDeliveryState, saveDeliveryState, saveExecutePhase } from './workers.js'
 import type { Platform } from './platform.js'
 
 /**
@@ -117,6 +117,7 @@ export async function watchDelivery(platform: Platform, taskId: string): Promise
     })
     // 段内检查点归位：修复模式回编码小节（watcher 直改真源，不经 rollbackStage，手动归位）
     await saveExecutePhase(platform, taskId, 'code')
+    await clearRailMarkers(platform, taskId) // 修复轮重跑开发轨（与 rollbackStage 同款归位）
     await log.append(taskId, 'execute', { type: 'system' }, 'rollback', {
       from: 'execute',
       to: 'execute',

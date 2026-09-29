@@ -21,7 +21,7 @@ import type { Platform } from './platform.js'
 export const AR_DEV_POOL = ['wanghao', 'liuyang', 'chenjing', 'xulei']
 
 /** 子任务从父任务交付区继承的设计产物 */
-const INHERITED_DELIVERY = ['architecture.md', 'spec.md', 'design.md', 'test-design.md']
+const INHERITED_DELIVERY = ['requirement.md', 'architecture.md', 'spec.md', 'design.md', 'test-design.md']
 const INHERITED_PROCESS = ['clarify-ir-sr-ar.md', 'decisions.json', 'baseline.md']
 
 export interface ArItem {
@@ -100,7 +100,7 @@ export async function spawnSubtasks(platform: Platform, parent: TaskState, items
         s.stageRounds = { requirement: 1, architecture: 1, design: 1, 'test-design': 1, execute: 1 }
         s.pendingInstructions.push(
           `本任务是父任务 #${parent.seq}「${parent.title}」的 AR 拆分子任务（AR${i + 1}/${items.length}，责任人 ${personOf(ownerId).name}）。` +
-            `实现范围=「${it.title}」；架构/功能/测试设计产物已拷贝至本任务交付区，按设计实现（含 UT）；MST 由验证小节统一执行。`,
+            `实现范围=「${it.title}」；需求/架构/功能/测试设计产物已拷贝至本任务交付区，先产出 AR 级实现设计摘要再编码（含 UT）；MST 由验证小节统一执行。`,
         )
         s.status = 'queued'
       },

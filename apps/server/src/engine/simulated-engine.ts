@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { newId, sleep } from '../domain/util.js'
-import type { AiEngine, EngineEvent, StageWorkRequest } from './types.js'
+import { stageOutputPath, type AiEngine, type EngineEvent, type StageWorkRequest } from './types.js'
 
 /**
  * 内置确定性模拟引擎
@@ -47,8 +47,20 @@ export class SimulatedEngine implements AiEngine {
         case 'ar-split':
           yield* this.jobArSplit(ctx, delay, signal)
           break
+        case 'ar-design':
+          yield* this.jobArDesign(ctx, delay, signal)
+          break
         case 'code':
           yield* this.jobCode(ctx, delay, signal)
+          break
+        case 'test-case-design':
+          yield* this.jobTestCaseDesign(ctx, delay, signal)
+          break
+        case 'auto-case-design':
+          yield* this.jobAutoCaseDesign(ctx, delay, signal)
+          break
+        case 'auto-case-generate':
+          yield* this.jobAutoCaseGenerate(ctx, delay, signal)
           break
         case 'verify-review':
           yield* this.jobVerifyReview(ctx, delay, signal)
@@ -98,7 +110,7 @@ export class SimulatedEngine implements AiEngine {
     yield { kind: 'tool_call', callId: newId('tc'), tool: 'verify_root_sync', input: 'package.json / src/index.js' }
     await sleep(delay)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'verify_root_sync', ok: true, summary: '根级配置与入口改动时间同步校验通过' }
-    await writeStageOutput(ws, { baselineReady: true })
+    await writeStageOutput(ws, 'intake', { baselineReady: true })
   }
 
   private async *jobClarify(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -114,18 +126,20 @@ export class SimulatedEngine implements AiEngine {
     const isDemo = DEMO_KEYWORDS.test(`${vars.title ?? ''}${vars.requirementText ?? ''}`)
     const doc = isDemo ? demoClarifyDoc(vars) : genericClarifyDoc(vars)
     await writeFileSafe(path.join(ws, 'process', 'clarify-ir-sr-ar.md'), doc)
+    const spec = isDemo ? demoRequirementSpec(vars) : genericRequirementSpec(vars)
+    await writeFileSafe(path.join(ws, 'delivery', 'requirement.md'), spec)
     await writeFileSafe(
       path.join(ws, 'process', 'decisions.json'),
       JSON.stringify([{ topic: '分解', decision: 'IR→SR→AR 已落成，原子项可单点验收', ts: new Date().toISOString() }], null, 2),
     )
-    yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_decomposition', ok: true, summary: 'process/clarify-ir-sr-ar.md 已写入（三级分解）' }
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_decomposition', ok: true, summary: 'process/clarify-ir-sr-ar.md + delivery/requirement.md 已写入（三级分解 + 需求分析 SPEC）' }
 
     if (isDemo) {
       yield {
         kind: 'assistant_message',
         text: '分解中遇到业务事实缺口：「积分过期规则」在模块库中没有定义，影响提醒计算与推送时点。举事实门请需求方确认（超时将降级为默认假设并标记待追认）。',
       }
-      await writeStageOutput(ws, {
+      await writeStageOutput(ws, 'clarify', {
         factQuestions: [
           {
             question: '会员积分的过期规则是什么？\n1) 按自然月过期还是滚动 365 天？\n2) 清零时点是月末当日还是次月 1 日？\n3) 过期前多久算「即将过期」（30 天口径以哪个时间为准）？',
@@ -139,7 +153,7 @@ export class SimulatedEngine implements AiEngine {
         atomicsSummary: 'AR1 过期规则参数落地；AR2 即将过期积分查询接口；AR3 定时扫描与用户筛选；AR4 推送发送（App 内信 + 短信降级）；AR5 幂等与重试',
       })
     } else {
-      await writeStageOutput(ws, {
+      await writeStageOutput(ws, 'clarify', {
         factQuestions: [
           {
             question: `「${vars.title}」的验收口径需要确认：\n1) 影响范围（模块/接口）？\n2) 验收标准中最关键的 1-2 条？`,
@@ -174,7 +188,7 @@ export class SimulatedEngine implements AiEngine {
     await sleep(delay)
     await writeFileSafe(path.join(ws, 'delivery', 'architecture.md'), doc)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_delivery', ok: true, summary: '交付物落盘 delivery/architecture.md（架构设计 SPEC）' }
-    await writeStageOutput(ws, { architectureReady: true })
+    await writeStageOutput(ws, 'architecture', { architectureReady: true })
   }
 
   private async *jobDesign(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -196,7 +210,7 @@ export class SimulatedEngine implements AiEngine {
     const contract = isDemo ? demoContract() : genericContract(vars)
     await writeJsonSafe(path.join(ws, 'delivery', 'contract', 'api-contract.json'), contract)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_delivery', ok: true, summary: '交付物落盘 delivery/；契约入单源 api-contract.json' }
-    await writeStageOutput(ws, { specReady: true })
+    await writeStageOutput(ws, 'design', { specReady: true })
   }
 
   private async *jobTestDesign(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -215,7 +229,7 @@ export class SimulatedEngine implements AiEngine {
     await sleep(delay)
     await writeFileSafe(path.join(ws, 'delivery', 'test-design.md'), doc)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_delivery', ok: true, summary: '交付物落盘 delivery/test-design.md（测试 SPEC）' }
-    await writeStageOutput(ws, { testDesignReady: true })
+    await writeStageOutput(ws, 'test-design', { testDesignReady: true })
   }
 
   private async *jobArSplit(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -238,7 +252,25 @@ export class SimulatedEngine implements AiEngine {
     const doc = arSplitDoc(items)
     await writeFileSafe(path.join(ws, 'process', 'ar-split.md'), doc)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_draft', ok: true, summary: `process/ar-split.md 已写入（${items.length} 个 AR 拆分方案）` }
-    await writeStageOutput(ws, { arSplitReady: true, arItems: items })
+    await writeStageOutput(ws, 'ar-split', { arSplitReady: true, arItems: items })
+  }
+
+  private async *jobArDesign(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
+    const { ws, vars, req } = ctx
+    const isDemo = DEMO_KEYWORDS.test(`${vars.title ?? ''}${vars.requirementText ?? ''}`)
+    const arTitle = vars.arTitle ?? ''
+    yield {
+      kind: 'assistant_message',
+      text: `AR 级设计（编码前置）：${arTitle ? `本 AR「${arTitle}」` : '本任务'}基于 spec/design 与契约单源聚焦实现设计摘要。`,
+    }
+    yield { kind: 'tool_call', callId: newId('tc'), tool: 'read_design', input: 'delivery/spec.md + delivery/design.md + delivery/contract/api-contract.json' }
+    await sleep(delay)
+    if (signal.aborted) return
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'read_design', ok: true, summary: '设计产物与契约已读取（不重写设计，只做实现衔接）' }
+    const doc = isDemo ? demoArDesignDoc(arTitle) : genericArDesignDoc(arTitle || vars.title || '')
+    await writeFileSafe(path.join(ws, 'process', 'ar-design.md'), doc)
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_ar_design', ok: true, summary: 'process/ar-design.md 已写入（AR 级实现设计摘要）' }
+    await writeStageOutput(ws, req.job, { arDesignReady: true })
   }
 
   private async *jobCode(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -254,7 +286,7 @@ export class SimulatedEngine implements AiEngine {
         await sleep(delay)
         yield { kind: 'tool_result', callId: newId('tr'), tool: 'invoke_api', ok: false, summary: `Error: LegacyPushClient.send is not a function（接口不存在，第 ${i} 次）` }
       }
-      await writeStageOutput(ws, { done: false, summary: '推送接口反复失败，疑似存量接口已下线，需人确认替代接口' })
+      await writeStageOutput(ws, 'code', { done: false, summary: '推送接口反复失败，疑似存量接口已下线，需人确认替代接口' })
       return
     }
 
@@ -272,11 +304,62 @@ export class SimulatedEngine implements AiEngine {
       await writeFileSafe(path.join(ws, f.path), f.content)
       yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_file', ok: true, summary: `${f.path}（${f.content.length} B）` }
     }
-    await writeStageOutput(ws, {
+    await writeStageOutput(ws, 'code', {
       claimedFiles: files.map((f) => f.path),
       done: true,
       summary: repair ? '修复完成，等待原维度复检' : '实现完成，进入验证',
     })
+  }
+
+  private async *jobTestCaseDesign(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
+    const { ws, vars, req } = ctx
+    const isDemo = DEMO_KEYWORDS.test(`${vars.title ?? ''}${vars.requirementText ?? ''}`)
+    yield {
+      kind: 'assistant_message',
+      text: '测试轨①：基于测试 SPEC 的测试点展开可执行用例集（前置/步骤/期望，边界逐点覆盖）。',
+    }
+    yield { kind: 'tool_call', callId: newId('tc'), tool: 'read_test_design', input: 'delivery/test-design.md' }
+    await sleep(delay)
+    if (signal.aborted) return
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'read_test_design', ok: true, summary: '测试点已读取（验收标准↔测试点映射）' }
+    const cases = isDemo ? 7 : 3
+    const doc = isDemo ? demoTestCasesDoc() : genericTestCasesDoc()
+    await writeFileSafe(path.join(ws, 'process', 'test-cases.md'), doc)
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_test_cases', ok: true, summary: `process/test-cases.md 已写入（${cases} 个用例）` }
+    await writeStageOutput(ws, req.job, { testCasesReady: true, cases })
+  }
+
+  private async *jobAutoCaseDesign(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
+    const { ws, req } = ctx
+    yield {
+      kind: 'assistant_message',
+      text: '测试轨②：自动化用例 DESIGN——框架对齐仓既有测试框架，选址 delivery/test/auto/，分层归属（可自动化/MST）。',
+    }
+    yield { kind: 'tool_call', callId: newId('tc'), tool: 'plan_auto_cases', input: 'process/test-cases.md → 框架/选址/数据构造' }
+    await sleep(delay)
+    if (signal.aborted) return
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'plan_auto_cases', ok: true, summary: '自动化设计完成（框架对齐/目录选址/数据构造策略）' }
+    await writeFileSafe(path.join(ws, 'process', 'auto-case-design.md'), autoCaseDesignDoc())
+    yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_auto_design', ok: true, summary: 'process/auto-case-design.md 已写入' }
+    await writeStageOutput(ws, req.job, { autoCasesReady: true })
+  }
+
+  private async *jobAutoCaseGenerate(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
+    const { ws, vars, req } = ctx
+    const isDemo = DEMO_KEYWORDS.test(`${vars.title ?? ''}${vars.requirementText ?? ''}`)
+    yield {
+      kind: 'assistant_message',
+      text: '测试轨③：按自动化设计生成可执行用例代码（delivery/test/auto/），不可自动化的留 MST 如实标注。',
+    }
+    const files = isDemo ? demoAutoCaseFiles() : genericAutoCaseFiles()
+    for (const f of files) {
+      if (signal.aborted) return
+      yield { kind: 'tool_call', callId: newId('tc'), tool: 'write_file', input: f.path }
+      await sleep(delay)
+      await writeFileSafe(path.join(ws, f.path), f.content)
+      yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_file', ok: true, summary: `${f.path}（${f.content.length} B）` }
+    }
+    await writeStageOutput(ws, req.job, { autoCasesReady: true, files: files.map((f) => f.path), cases: files.length })
   }
 
   private async *jobVerifyReview(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -302,7 +385,7 @@ export class SimulatedEngine implements AiEngine {
     const report = `# 维度评审报告：${dimension}\n\n- 分派 ID：${dispatchId}（防伪溯源）\n- 结论：${verdict}\n\n## 发现\n${findings.map((f) => `- ${f}`).join('\n')}\n`
     await writeFileSafe(path.join(ws, 'process', 'review', `dim-${sanitize(dimension)}-r${round}.md`), report)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_report', ok: true, summary: `${dimension} → ${verdict}（报告含 dispatchId 溯源）` }
-    await writeStageOutput(ws, { verdict, findings, dispatchId })
+    await writeStageOutput(ws, 'verify-review', { verdict, findings, dispatchId })
   }
 
   private async *jobVerifyCritic(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -320,7 +403,7 @@ export class SimulatedEngine implements AiEngine {
       path.join(ws, 'process', 'review', `critic-r${round}.md`),
       `# Critic 终审报告（第 ${round} 轮）\n\n- 覆盖分派：${dispatchIds.join(', ')}\n- 交叉校验：通过（报告↔分派记录一致）\n- 各维结论：${verdicts.join(' / ') || '—'}\n- 综合裁决：${verdict}\n`,
     )
-    await writeStageOutput(ws, { dispatchIds, verdict })
+    await writeStageOutput(ws, 'verify-critic', { dispatchIds, verdict })
   }
 
   private async *jobBuild(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -333,13 +416,13 @@ export class SimulatedEngine implements AiEngine {
       const log = `> npm run build\n✗ CompileError: cannot resolve module '../push-legacy-client' from src/services/expiry-reminder.js\n构建失败（第 ${round} 次重试）`
       await writeFileSafe(path.join(ws, 'process', `build-r${round}.log`), log)
       yield { kind: 'tool_result', callId: newId('tr'), tool: 'run_build', ok: false, summary: '构建失败：模块解析错误（如实记录，不假装通过）' }
-      await writeStageOutput(ws, { ok: false, log })
+      await writeStageOutput(ws, 'build', { ok: false, log })
       return
     }
     const log = `> npm run build\n✓ built in 1.2s（${req.fixDirectives.length ? '修复后' : ''}构建通过）`
     await writeFileSafe(path.join(ws, 'process', `build-r${round}.log`), log)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'run_build', ok: true, summary: '构建通过' }
-    await writeStageOutput(ws, { ok: true, log })
+    await writeStageOutput(ws, 'build', { ok: true, log })
   }
 
   private async *jobTest(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -351,7 +434,7 @@ export class SimulatedEngine implements AiEngine {
     const report = `# 测试报告（第 ${round} 轮）\n\n- 用例：${cases}（含边界：月末切换 / 零余额 / 历史遗留 / 幂等重放）\n- 结果：全部通过\n- 证据：远端流水线将复跑（SHA 关联）\n`
     await writeFileSafe(path.join(ws, 'process', `test-r${round}.md`), report)
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'run_tests', ok: true, summary: `${cases} 用例全部通过` }
-    await writeStageOutput(ws, { ok: true, cases, log: report })
+    await writeStageOutput(ws, 'test', { ok: true, cases, log: report })
   }
 
   private async *jobDeliver(ctx: Ctx, delay: number, signal: AbortSignal): AsyncIterable<EngineEvent> {
@@ -362,7 +445,7 @@ export class SimulatedEngine implements AiEngine {
       `## ${vars.title ?? '变更'}\n\n- 关联 spec：delivery/spec.md\n- 测试证据：process/test-r1.md（远端流水线以 SHA 复核）\n- 评审：见 process/review/\n`,
     )
     yield { kind: 'tool_result', callId: newId('tr'), tool: 'write_mr_desc', ok: true, summary: 'MR 描述已生成' }
-    await writeStageOutput(ws, { done: true })
+    await writeStageOutput(ws, 'deliver', { done: true })
   }
 }
 
@@ -383,8 +466,8 @@ async function writeJsonSafe(file: string, data: unknown): Promise<void> {
   await writeFileSafe(file, JSON.stringify(data, null, 2))
 }
 
-async function writeStageOutput(ws: string, out: Record<string, unknown>): Promise<void> {
-  await writeJsonSafe(path.join(ws, '.flow', 'stage-output.json'), out)
+async function writeStageOutput(ws: string, job: string, out: Record<string, unknown>): Promise<void> {
+  await writeJsonSafe(path.join(ws, stageOutputPath(job).replace(/^\.flow\//, '.flow' + path.sep)), out)
 }
 
 function sanitize(s: string): string {
@@ -417,6 +500,16 @@ function demoClarifyDoc(vars: Record<string, string>): string {
 
 function genericClarifyDoc(vars: Record<string, string>): string {
   return `# 三级分解 IR → SR → AR（过程区）\n\n## IR 意图需求\n${vars.requirementText ?? vars.title ?? ''}\n\n## SR 场景需求\n\n- SR1 范围界定：影响模块/接口清单\n- SR2 核心行为：主流程与异常流\n- SR3 验收口径：可验收标准\n\n## AR 原子需求\n\n| # | 原子项 | 验收标准 |\n|---|---|---|\n| AR1 | 范围内核心实现 | 主流程通过 |\n| AR2 | 异常与边界 | 异常流不劣化 |\n| AR3 | 回归 | 既有用例不破坏 |\n`
+}
+
+// ---------- 需求分析 SPEC（交付区 · 解决方案 SE 视角） ----------
+
+function demoRequirementSpec(vars: Record<string, string>): string {
+  return `# 需求分析 SPEC（交付区 · 解决方案 SE）\n\n- IR 意图：${vars.requirementText ?? '会员积分过期提醒'}\n- 决策记录：见 process/decisions.json（过期规则经事实门确认或待追认标记）\n\n## SR 场景需求（按管理对象）\n\n1. 积分域：计算未来 30 天内将清零的积分集合（口径以决策记录为准）。\n2. 推送域：对命中用户发送提醒（App 内信主，短信降级）。\n3. 任务域：自然月末扫描，幂等可重放。\n\n## 验收原子项（AR）\n\n| AR | 原子项 | 验收标准 |\n|---|---|---|\n| AR1 | 过期规则参数化落地 | 规则可配置，单测覆盖三种口径 |\n| AR2 | 即将过期积分查询接口 | 按契约返回，30 天窗口命中准确 |\n| AR3 | 月末定时扫描 + 用户筛选 | 扫描幂等，重放不重复推送 |\n| AR4 | 推送发送（双通道降级） | 渠道可配，失败降级可观测 |\n| AR5 | 限流与熔断保护 | 推送速率受限，网关不熔断 |\n\n## DFX 口径\n\n- 可靠：幂等键 (userId, month)；失败重试一次。\n- 性能：推送限流 100/s。\n- 安全：不推送已注销用户。\n`
+}
+
+function genericRequirementSpec(vars: Record<string, string>): string {
+  return `# 需求分析 SPEC（交付区 · 解决方案 SE）\n\n- IR 意图：${vars.requirementText ?? vars.title ?? ''}\n\n## SR 场景需求\n\n1. 范围界定：影响模块/接口清单。\n2. 核心行为：主流程与异常流。\n3. 验收口径：可验收标准。\n\n## 验收原子项（AR）\n\n| AR | 原子项 | 验收标准 |\n|---|---|---|\n| AR1 | 范围内核心实现 | 主流程通过 |\n| AR2 | 异常与边界 | 异常流不劣化 |\n| AR3 | 回归 | 既有用例不破坏 |\n`
 }
 
 function demoArchitectureDoc(vars: Record<string, string>): string {
@@ -466,6 +559,52 @@ function arSplitDoc(items: ArItemDoc[]): string {
   return `# AR 拆分方案（过程区 · 执行段并行派发）\n\n拆分原则：每个 AR 可独立实现、独立验收、独立 MR；开发轮转承接（并发槽内并行）；全部合入后聚合验收（TSE）。\n\n| # | AR | 范围 | 验收标准 |\n|---|---|---|---|\n${items
     .map((it, i) => `| AR${i + 1} | ${it.title} | ${it.summary} | ${it.acceptance ?? '主流程通过'} |`)
     .join('\n')}\n\n依赖关系：AR 间无强顺序依赖（契约已单源）；联调由聚合验收门统一把关。\n`
+}
+
+// ---------- AR 级设计（编码前置 · 设计→实现的聚焦衔接） ----------
+
+function demoArDesignDoc(arTitle: string): string {
+  return `# AR 级实现设计摘要（过程区 · 编码前置）\n\n- 本 AR：${arTitle || '（单任务：全量实现）'}\n- 上游：delivery/spec.md / delivery/design.md / delivery/contract/api-contract.json（不重写，只做衔接）\n\n## 模块落位\n\n- services/expiry-reminder.js：扫描 + 筛选 + 编排主链。\n- services/push-gateway.js：PushService.send 限流 + 短信降级。\n- repositories/expiry-repo.js：即将过期查询（幂等键 userId+month）。\n\n## 接口实现要点\n\n- query-expiring-points / send-reminder 严格对齐契约单源（api-contract.json）；不私自增删字段。\n\n## 测试要点\n\n- UT：过期口径参数化（自然月/固定窗口/自定义）、幂等键去重、限流令牌。\n- MST（验证小节统一执行）：月末边界切换、零余额不推送、降级链路。\n\n## 设计缺口\n\n- 无（设计已覆盖本 AR 范围）。\n`
+}
+
+function genericArDesignDoc(title: string): string {
+  return `# AR 级实现设计摘要（过程区 · 编码前置）\n\n- 本 AR：${title || '（单任务：全量实现）'}\n- 上游：delivery/spec.md / delivery/design.md（不重写，只做衔接）\n\n## 模块落位\n\n- 按既有分层落位，改动点收敛在核心域模块。\n\n## 接口实现要点\n\n- 对齐契约单源（api-contract.json）。\n\n## 测试要点\n\n- UT：核心行为 + 边界；MST 留验证小节。\n\n## 设计缺口\n\n- 无。\n`
+}
+
+// ---------- 测试轨（用例设计 → 自动化 DESIGN → 自动化生成） ----------
+
+function demoTestCasesDoc(): string {
+  return `# 测试用例集（测试轨① · 基于测试 SPEC 测试点展开）\n\n| 用例 | 对应测试点 | 前置 | 步骤 | 期望 |\n|---|---|---|---|---|\n| C1 | T1 月末边界 | 用户有 3 月底过期积分 | 模拟 23:59→00:00 切换扫描 | 窗口切换正确，不漏/不重 |\n| C2 | T2 零余额 | 用户积分为 0 | 执行月末扫描 | 不生成提醒 |\n| C3 | T3 历史遗留 | 用户有历史遗留积分 | 按过期口径计算 | 纳入/排除正确 |\n| C4 | T4 幂等重放 | 同月已推送 | 重放扫描 | 同月同用户仅 1 条 |\n| C5 | T5 降级链路 | App 内信通道失败 | 触发推送 | 降级短信且限流生效 |\n| C6 | T6 速率 | 批量用户到期 | 并发推送 | 超 100/s 被限流 |\n| C7 | T7 契约一致 | — | 比对 api-contract.json | 接口形状一致 |\n`
+}
+
+function genericTestCasesDoc(): string {
+  return `# 测试用例集（测试轨① · 基于测试 SPEC 测试点展开）\n\n| 用例 | 对应测试点 | 前置 | 步骤 | 期望 |\n|---|---|---|---|---|\n| C1 | T1 主流程 | 环境就绪 | 执行主流程 | 通过 |\n| C2 | T2 边界 | 边界条件构造 | 执行边界场景 | 不漏/不重 |\n| C3 | T3 回归 | 既有用例在 | 全量跑 | 既有功能不破坏 |\n`
+}
+
+function autoCaseDesignDoc(): string {
+  return `# 自动化用例 DESIGN（测试轨②）\n\n## 框架选型\n\n对齐仓既有测试框架（vitest/jest 惯例）；断言库用框架内置。\n\n## 目录选址\n\n\`delivery/test/auto/\`（与手写 UT 的 \`delivery/test/\` 区分；随 MR 入库，流水线自动执行）。\n\n## 数据构造\n\n内联 fixture 优先（用例自含），跨用例共享的构造放同目录 \`fixtures.js\`。\n\n## 分层归属\n\n| 用例 | 归属 |\n|---|---|\n| C1-C4 | 自动化（delivery/test/auto/） |\n| C5 | 自动化（降级链路 mock 通道） |\n| C6 | 自动化（限流令牌桶） |\n| C7 | MST（契约一致性由远端流水线复跑） |\n`
+}
+
+function demoAutoCaseFiles(): { path: string; content: string }[] {
+  return [
+    {
+      path: 'delivery/test/auto/expiry-boundary.test.js',
+      content: `'use strict'\n// 测试轨自动生成：边界用例（C1-C4）\nconst assert = require('assert')\n\ndescribe('自动化用例（测试轨生成）', () => {\n  it('C1 月末→次月切换：窗口不漏不重', () => assert.ok(true))\n  it('C2 零余额用户不推送', () => assert.ok(true))\n  it('C3 历史遗留积分口径正确', () => assert.ok(true))\n  it('C4 幂等重放：同月同用户仅 1 条', () => assert.ok(true))\n})\n`,
+    },
+    {
+      path: 'delivery/test/auto/push-degrade.test.js',
+      content: `'use strict'\n// 测试轨自动生成：降级与限流（C5-C6）\nconst assert = require('assert')\n\ndescribe('自动化用例（降级/限流）', () => {\n  it('C5 App 内信失败 → 短信降级且限流生效', () => assert.ok(true))\n  it('C6 超 100/s 被限流', () => assert.ok(true))\n})\n`,
+    },
+  ]
+}
+
+function genericAutoCaseFiles(): { path: string; content: string }[] {
+  return [
+    {
+      path: 'delivery/test/auto/main.test.js',
+      content: `'use strict'\n// 测试轨自动生成：主流程/边界/回归\nconst assert = require('assert')\n\ndescribe('自动化用例（测试轨生成）', () => {\n  it('C1 主流程通过', () => assert.ok(true))\n  it('C2 边界不漏不重', () => assert.ok(true))\n  it('C3 回归不破坏', () => assert.ok(true))\n})\n`,
+    },
+  ]
 }
 
 function demoSpec(vars: Record<string, string>): string {

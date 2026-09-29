@@ -22,6 +22,25 @@ export const STAGE_ORDER = [
 export type StageId = (typeof STAGE_ORDER)[number]
 
 /**
+ * 两段分组（愿景：设计段人与 AI 共创 / 执行段 AI 自动化生成人审核）。
+ * 首页步骤轨/看板的分组横幅消费此单源；flatMap 必须无重无漏覆盖 STAGE_ORDER。
+ */
+export const STAGE_PHASES = [
+  {
+    id: 'design',
+    label: '设计段 · 人与AI共创',
+    hint: '人定方向拍板，AI 加速产出',
+    stages: ['requirement', 'architecture', 'design', 'test-design'] as const,
+  },
+  {
+    id: 'execute',
+    label: '执行段 · AI自动化生成 · 人审核',
+    hint: 'AI 推进流水线，人守测试门与交付门',
+    stages: ['execute', 'merged'] as const,
+  },
+] as const
+
+/**
  * 阶段注册表声明列（单源 · mae-flow stageRegistry 教训）：
  * 产物清单 / 出口门 / 出口动作在这里声明一次，门证据同屏（workers）、引擎指令（stage-prompts）、
  * 形状契约测试（shape-contracts/e2e）全部读表生成——消灭「改一个阶段要同步三处」的漂移。
@@ -113,7 +132,7 @@ export const STAGES: Record<StageId, StageMeta> = {
     no: 1,
     label: '需求',
     shortLabel: '需求',
-    desc: '需求验收 → 系统需求分析：对齐上下文建立基线，成组质询消除歧义，IR→SR→AR 三级分解落成可验收原子项',
+    desc: '需求验收 → 系统需求分析（解决方案 SE 视角）：对齐上下文建立基线，成组质询消除歧义，IR→SR→AR 三级分解落成可验收原子项，需求分析 SPEC 落交付区',
     automatable: true,
     exitCondition:
       '改动切片基线已建立并过双层自动校验（程序规则 + AI 复核，段内检查点不靠人拍）；需求已落成可验收原子项；业务事实有决策记录（事实门全决或降级标记待追认）',
@@ -128,6 +147,7 @@ export const STAGES: Record<StageId, StageMeta> = {
         label: 'IR→SR→AR 三级分解（需求分析含 DFX、功能/用例/场景分析）',
         outputs: [
           { path: 'process/clarify-ir-sr-ar.md', partition: 'process', label: '三级分解（意图/场景/原子项）', evidence: false },
+          { path: 'delivery/requirement.md', partition: 'delivery', label: '需求分析 SPEC（IR→SR→AR 汇总 + 验收原子项）' },
           { path: 'process/decisions.json', partition: 'process', label: '业务决策记录' },
         ],
       },
@@ -228,11 +248,16 @@ export const STAGES: Record<StageId, StageMeta> = {
     no: 5,
     label: '执行与编码',
     shortLabel: '执行',
-    desc: '全功能团队×N：AR 拆分 → 编码+UT+MST（自报以文件证据裁决）→ 多维评审+Critic+构建+测试 → 测试门 → MR 监听（反馈分诊/SHA 校验）→ 交付门拍板合入',
+    desc: '全功能团队×N 双轨并行：AR 拆分 → AR 级设计 → 开发轨（编码+UT+MST）∥ 测试轨（测试用例设计→自动化用例 DESIGN→自动化用例生成）→ 多维评审+Critic+构建+测试 → 测试门（证据含测试轨产物）→ MR 监听（反馈分诊/SHA 校验）→ 交付门拍板合入',
     automatable: true,
     exitCondition:
-      '自报完成经文件证据裁决；各维独立判定 + Critic 终审通过；构建 + 测试通过；测试门认可；5 类反馈全消化（SHA 校验、幂等重放）、远端流水线真绿、合入方拍板合入',
+      '自报完成经文件证据裁决；各维独立判定 + Critic 终审通过；构建 + 测试通过；测试门认可（证据同屏含测试轨产物）；5 类反馈全消化（SHA 校验、幂等重放）、远端流水线真绿、合入方拍板合入',
     jobs: [
+      {
+        id: 'ar-design',
+        label: 'AR 级设计（编码前置：基于设计产物出实现设计摘要）',
+        outputs: [{ path: 'process/ar-design.md', partition: 'process', label: 'AR 级实现设计摘要（模块落位/接口/测试要点）', evidence: false }],
+      },
       {
         id: 'code',
         label: '实现（写/修双模式，自报完成以文件证据裁决）',
@@ -240,6 +265,21 @@ export const STAGES: Record<StageId, StageMeta> = {
           { path: 'delivery/src/', partition: 'delivery', label: '实现代码目录（动态清单，平台校验存在）', evidence: false },
           { path: 'delivery/test/', partition: 'delivery', label: '实现测试目录（动态清单）', evidence: false },
         ],
+      },
+      {
+        id: 'test-case-design',
+        label: '测试轨①：测试用例设计（测试 SPEC→可执行用例集）',
+        outputs: [{ path: 'process/test-cases.md', partition: 'process', label: '测试用例集（用例/步骤/期望，对应测试点）' }],
+      },
+      {
+        id: 'auto-case-design',
+        label: '测试轨②：自动化用例 DESIGN（框架/选址/数据构造）',
+        outputs: [{ path: 'process/auto-case-design.md', partition: 'process', label: '自动化用例设计（框架选型/目录选址/数据构造策略）', evidence: false }],
+      },
+      {
+        id: 'auto-case-generate',
+        label: '测试轨③：自动化用例生成',
+        outputs: [{ path: 'delivery/test/auto/', partition: 'delivery', label: '自动化用例目录（动态清单）', evidence: false }],
       },
       {
         id: 'ar-split',
@@ -272,7 +312,7 @@ export const STAGES: Record<StageId, StageMeta> = {
       { kind: 'delivery', deciderRole: 'merger', label: '交付门（合入终态，永远人工不可代答）' },
     ],
     exitAction: 'watch',
-    skills: [{ id: 'execute', label: 'Workflow / Skill', desc: 'AR 并行 · 编码+UT+MST · 自动化用例 · 多维评审 · MR 交付' }],
+    skills: [{ id: 'execute', label: 'Workflow / Skill', desc: 'AR 并行 · AR 级设计 · 编码+UT+MST · 测试用例设计 · 自动化用例生成 · 多维评审 · MR 交付' }],
   },
   merged: {
     id: 'merged',

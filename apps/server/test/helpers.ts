@@ -122,7 +122,7 @@ export async function createDemoTask(platform: Platform, opts: DemoTaskOpts = {}
   })
 }
 
-/** 以指定身份决策当前门（演示环境无鉴权） */
+/** 以指定身份决策当前门（演示环境无鉴权；版本冲突=他写者先到，重读重试是合法语义） */
 export async function decide(
   platform: Platform,
   taskId: string,
@@ -135,15 +135,28 @@ export async function decide(
   } = {},
 ) {
   const { decideGate } = await import('../src/orchestrator/gates.js')
-  const st = await stateOf(platform, taskId)
-  return decideGate(platform, taskId, {
-    stateVersion: st.stateVersion,
-    action,
-    answer: extra.answer,
-    rollbackTarget: extra.rollbackTarget,
-    reason: extra.reason,
-    asUserId,
-  })
+  for (let attempt = 0; ; attempt++) {
+    const st = await stateOf(platform, taskId)
+    try {
+      return await decideGate(platform, taskId, {
+        stateVersion: st.stateVersion,
+        action,
+        answer: extra.answer,
+        rollbackTarget: extra.rollbackTarget,
+        reason: extra.reason,
+        asUserId,
+      })
+    } catch (err) {
+      // 读版本到提交之间有并发写（如 runner 的 tokenUsage 入账）→ 409 知情；
+      // 非门决策类错误不重试（not-decider/not-raised 等应如实失败）
+      const msg = String((err as Error).message ?? '')
+      if (attempt < 5 && (msg.includes('state_version') || msg.includes('门已更新'))) {
+        await sleep(30)
+        continue
+      }
+      throw err
+    }
+  }
 }
 
 /**

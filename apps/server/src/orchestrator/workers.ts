@@ -107,7 +107,7 @@ async function requirementWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       injectedKnowledge: knowledge,
       vars: { mode: state.mode, repo: state.repo, module: state.module, title: state.title, requirementText: state.requirementText },
     })
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'intake')
 
     if (res.interrupted) return 'wait'
     if (res.failed) return failTask(platform, taskId, `需求阶段基线建立引擎失败：${res.failureSummary ?? ''}`)
@@ -171,7 +171,7 @@ async function requirementClarifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },
   })
   const output = res.output
-  await clearStageOutput(platform, taskId)
+  await clearStageOutput(platform, taskId, 'clarify')
 
   if (res.interrupted) return 'wait'
   if (res.failed) return failTask(platform, taskId, `需求分解引擎失败：${res.failureSummary ?? ''}`)
@@ -240,7 +240,7 @@ async function architectureWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     injectedKnowledge: knowledge,
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },
   })
-  await clearStageOutput(platform, taskId)
+  await clearStageOutput(platform, taskId, 'architecture')
   if (res.interrupted) return 'wait'
   if (res.failed) return failTask(platform, taskId, `架构阶段引擎失败：${res.failureSummary ?? ''}`)
 
@@ -300,7 +300,7 @@ async function designWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     injectedKnowledge: knowledge,
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },
   })
-  await clearStageOutput(platform, taskId)
+  await clearStageOutput(platform, taskId, 'design')
   if (res.interrupted) return 'wait'
   if (res.failed) return failTask(platform, taskId, `设计阶段引擎失败：${res.failureSummary ?? ''}`)
 
@@ -409,7 +409,7 @@ async function testDesignWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     injectedKnowledge: knowledge,
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },
   })
-  await clearStageOutput(platform, taskId)
+  await clearStageOutput(platform, taskId, 'test-design')
   if (res.interrupted) return 'wait'
   if (res.failed) return failTask(platform, taskId, `测试设计阶段引擎失败：${res.failureSummary ?? ''}`)
 
@@ -472,12 +472,14 @@ async function reviewAnnotations(platform: Platform, taskId: string): Promise<st
 
 // ==================== ⑤ 执行与编码（愿景节点5：全功能团队×N；吸收 v1 code+verify+deliver） ====================
 
-/** 执行段段内检查点（.flow/execute-phase.json）：编码→验证→交付是段内循环，不是阶段边界 */
-export type ExecutePhase = 'code' | 'verify' | 'deliver'
+/** 执行段段内检查点（.flow/execute-phase.json）：AR设计→编码→验证→交付是段内循环，不是阶段边界 */
+export type ExecutePhase = 'ar-design' | 'code' | 'verify' | 'deliver'
 
 export async function loadExecutePhase(platform: Platform, taskId: string): Promise<ExecutePhase> {
   const f = await readJson<{ phase: ExecutePhase }>(path.join(platform.store.flowDir(taskId), 'execute-phase.json'))
-  return f?.phase ?? 'code'
+  // 文件缺失 = 全新进入（advanceStage 已清）或 ar-design 中途崩溃 → 从 AR 级设计起跑；
+  // mid-code/mid-verify 崩溃时文件已是对应值，不受默认值影响。
+  return f?.phase ?? 'ar-design'
 }
 
 export async function saveExecutePhase(platform: Platform, taskId: string, phase: ExecutePhase): Promise<void> {
@@ -490,6 +492,7 @@ export async function clearExecutePhase(platform: Platform, taskId: string): Pro
   } catch {
     // ignore
   }
+  await clearRailMarkers(platform, taskId)
 }
 
 async function executeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
@@ -511,6 +514,7 @@ async function executeMainWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   if (gate && gate.kind === 'delivery') return deliverMergeBranch(ctx) // 交付门（合入）
 
   const phase = await loadExecutePhase(platform, state.taskId)
+  if (phase === 'ar-design') return executeArDesignPart(ctx)
   if (phase === 'verify') return executeVerifyPart(ctx)
   if (phase === 'deliver') return executeDeliverPart(ctx)
   return executeCodePart(ctx)
@@ -589,7 +593,7 @@ async function parentExecuteWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     injectedKnowledge: knowledge,
     vars: { title: state.title, requirementText: state.requirementText, module: state.module },
   })
-  await clearStageOutput(platform, taskId)
+  await clearStageOutput(platform, taskId, 'ar-split')
   if (res.interrupted) return 'wait'
   if (res.failed) return failTask(platform, taskId, `AR 拆分作业引擎失败：${res.failureSummary ?? ''}`)
 
@@ -624,7 +628,66 @@ async function parentExecuteWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   return 'wait'
 }
 
-/** 执行段 · 编码小节（写/修双模式；自报完成以文件证据裁决，通过后进验证小节） */
+/** 轨道完成标记（.flow/rail-{code|test}.json）：双轨并行后重试/修复轮只重跑未完成轨 */
+export async function railDone(platform: Platform, taskId: string, rail: 'code' | 'test'): Promise<boolean> {
+  const f = await readJson<{ done: boolean }>(path.join(platform.store.flowDir(taskId), `rail-${rail}.json`))
+  return f?.done === true
+}
+
+async function markRailDone(platform: Platform, taskId: string, rail: 'code' | 'test'): Promise<void> {
+  await writeJson(path.join(platform.store.flowDir(taskId), `rail-${rail}.json`), { done: true, at: nowIso() })
+}
+
+/** 清轨道标记（回退进执行段/watcher 自动修复时调用：修复轮重跑开发轨） */
+export async function clearRailMarkers(platform: Platform, taskId: string): Promise<void> {
+  for (const rail of ['code', 'test'] as const) {
+    try {
+      await fs.rm(path.join(platform.store.flowDir(taskId), `rail-${rail}.json`), { force: true })
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** 执行段 · AR 级设计小节（编码前置：设计→实现的聚焦衔接；单任务与 AR 子任务同构） */
+async function executeArDesignPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { platform, state } = ctx
+  const taskId = state.taskId
+
+  const fresh = await platform.store.load(taskId)
+  const knowledge = await platform.injectKnowledge(taskId, 'execute')
+  const directives = await consumeInstructions(platform, taskId)
+  const res = await runEngine(platform, fresh, 'ar-design', {
+    purpose: 'AR 级设计：基于设计产物出实现设计摘要（编码前置）',
+    fixDirectives: directives,
+    injectedKnowledge: knowledge,
+    vars: { title: fresh.title, requirementText: fresh.requirementText, module: fresh.module, arTitle: fresh.arTitle ?? '' },
+  })
+  await clearStageOutput(platform, taskId, 'ar-design')
+
+  if (res.interrupted) {
+    const after = await platform.store.load(taskId)
+    if (after.health.level === 'red') {
+      return failTask(platform, taskId, `连续工具报错超预算，健康红线停止（待修复）：${res.failureSummary ?? ''}`)
+    }
+    return 'wait'
+  }
+  if (res.failed || res.output.arDesignReady !== true) {
+    if (ctx.attempts < 2) return 'continue'
+    return failTask(platform, taskId, `AR 级设计未能完成：${res.failureSummary ?? '自报未完成'}`)
+  }
+
+  await platform.syncArtifacts(taskId)
+  await saveExecutePhase(platform, taskId, 'code') // 段内检查点：AR 设计过 → 编码小节
+  return 'continue'
+}
+
+/**
+ * 执行段 · 编码小节 —— 双轨并行（愿景：全功能团队×N）
+ * 开发轨（code）∥ 测试轨（测试用例设计→自动化 DESIGN→自动化生成），每轨独立引擎会话。
+ * 轨道完成标记让重试/修复轮只重跑未完成轨：修复模式（directives 非空）只重跑开发轨
+ * （测试轨产物派生自测试 SPEC 而非代码，代码修复不使其失效）。
+ */
 async function executeCodePart(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
@@ -633,44 +696,83 @@ async function executeCodePart(ctx: WorkerCtx): Promise<WorkerOutcome> {
 
   const knowledge = await platform.injectKnowledge(taskId, 'execute')
   const directives = await consumeInstructions(platform, taskId)
-  const res = await runEngine(platform, fresh, 'code', {
-    purpose: directives.length > 0 ? '修复模式：按指令改写代码' : '写模式：按 spec/design 实现',
-    fixDirectives: directives,
-    injectedKnowledge: knowledge,
-    vars: { title: fresh.title, requirementText: fresh.requirementText, module: fresh.module },
-  })
-  const output = res.output
-  await clearStageOutput(platform, taskId)
+  const vars = { title: fresh.title, requirementText: fresh.requirementText, module: fresh.module }
+  const repair = directives.length > 0
 
-  if (res.interrupted) {
-    // 人接管（via=interrupt）或健康红线中断
-    const after = await platform.store.load(taskId)
-    if (after.health.level === 'red') {
-      return failTask(platform, taskId, `连续工具报错超预算，健康红线停止（待修复）：${res.failureSummary ?? ''}`)
+  // ---- 开发轨（写/修双模式；自报完成以文件证据裁决） ----
+  const runDevRail = async (): Promise<{ ok: boolean; reason?: string }> => {
+    const res = await runEngine(platform, fresh, 'code', {
+      purpose: repair ? '修复模式：按指令改写代码' : '写模式：按 spec/design 实现',
+      fixDirectives: directives,
+      injectedKnowledge: knowledge,
+      vars,
+    })
+    const output = res.output
+    await clearStageOutput(platform, taskId, 'code')
+
+    if (res.interrupted) {
+      const after = await platform.store.load(taskId)
+      if (after.health.level === 'red') {
+        return { ok: false, reason: `连续工具报错超预算，健康红线停止（待修复）：${res.failureSummary ?? ''}` }
+      }
+      return { ok: false, reason: '__interrupted__' }
     }
-    return 'wait'
-  }
-  if (res.failed || output.done !== true) {
-    if (ctx.attempts < 2) return 'continue' // 会话失败重试（预算内）
-    return failTask(platform, taskId, `编码小节未能完成（自报未完成/引擎失败）：${res.failureSummary ?? '连续试错'}`)
+    if (res.failed || output.done !== true) {
+      return { ok: false, reason: `编码小节未能完成（自报未完成/引擎失败）：${res.failureSummary ?? '连续试错'}` }
+    }
+    // 自报完成以文件证据裁决（不只信自报）
+    const claimed = output.claimedFiles ?? []
+    const wsRoot = platform.store.taskDir(taskId)
+    const missing: string[] = []
+    for (const f of claimed) {
+      const full = path.join(wsRoot, f)
+      if (!path.normalize(full).startsWith(path.normalize(wsRoot))) continue
+      if (!(await fs.stat(full).catch(() => null))) missing.push(f)
+    }
+    if (missing.length > 0) {
+      return { ok: false, reason: `自报完成但文件不存在（不信自报）：${missing.join(', ')}` }
+    }
+    await markRailDone(platform, taskId, 'code')
+    return { ok: true }
   }
 
-  // 自报完成以文件证据裁决（不只信自报）
-  const claimed = output.claimedFiles ?? []
-  const wsRoot = platform.store.taskDir(taskId)
-  const missing: string[] = []
-  for (const f of claimed) {
-    const full = path.join(wsRoot, f)
-    if (!path.normalize(full).startsWith(path.normalize(wsRoot))) continue
-    if (!(await fs.stat(full).catch(() => null))) missing.push(f)
+  // ---- 测试轨（串行链：用例设计 → 自动化 DESIGN → 自动化生成；产物派生自测试 SPEC） ----
+  const runTestRail = async (): Promise<{ ok: boolean; reason?: string }> => {
+    for (const [job, purpose, readyField] of [
+      ['test-case-design', '测试轨①：测试用例设计（测试点→可执行用例集）', 'testCasesReady'],
+      ['auto-case-design', '测试轨②：自动化用例 DESIGN（框架/选址/数据构造）', 'autoCasesReady'],
+      ['auto-case-generate', '测试轨③：自动化用例生成（delivery/test/auto/）', 'autoCasesReady'],
+    ] as const) {
+      const res = await runEngine(platform, fresh, job, { purpose, injectedKnowledge: knowledge, vars })
+      await clearStageOutput(platform, taskId, job)
+      if (res.interrupted) return { ok: false, reason: '__interrupted__' }
+      if (res.failed || res.output[readyField] !== true) {
+        return { ok: false, reason: `测试轨 ${job} 未能完成：${res.failureSummary ?? '自报未完成'}` }
+      }
+    }
+    await markRailDone(platform, taskId, 'test')
+    return { ok: true }
   }
-  if (missing.length > 0) {
-    if (ctx.attempts < 2) return 'continue'
-    return failTask(platform, taskId, `自报完成但文件不存在（不信自报）：${missing.join(', ')}`)
+
+  const devDone = await railDone(platform, taskId, 'code')
+  const testDone = (await railDone(platform, taskId, 'test')) || repair // 修复轮视为测试轨有效（不重跑）
+
+  const ok: { ok: true } = { ok: true }
+  const results = await Promise.all<{ ok: boolean; reason?: string }>([
+    devDone ? Promise.resolve(ok) : runDevRail(),
+    testDone ? Promise.resolve(ok) : runTestRail(),
+  ])
+
+  const interrupted = results.some((r) => r.reason === '__interrupted__')
+  if (interrupted) return 'wait'
+  const failedRail = results.find((r) => !r.ok)
+  if (failedRail) {
+    if (ctx.attempts < 2) return 'continue' // 会话失败重试（预算内；只重跑未完成轨）
+    return failTask(platform, taskId, failedRail.reason ?? '编码小节失败')
   }
 
   await platform.syncArtifacts(taskId)
-  await saveExecutePhase(platform, taskId, 'verify') // 段内检查点：编码过 → 验证小节
+  await saveExecutePhase(platform, taskId, 'verify') // 段内检查点：双轨编码过 → 验证小节
   return 'continue'
 }
 
@@ -745,7 +847,7 @@ async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
     vs.dims = updated
     vs.round += 1
     await writeJson(path.join(flowDir, 'verify-state.json'), vs)
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'verify-review')
   }
 
   // ---- Critic 终审（汇总 + 来源交叉校验防伪） ----
@@ -755,7 +857,7 @@ async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
       purpose: 'Critic 终审：汇总各维度 + 来源交叉校验',
       vars: { dispatchIds: dispatchIds.join(','), verdicts: vs.dims.map((d) => d.verdict).join(','), round: String(vs.round) },
     })
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'verify-critic')
     const cited = (r.output.dispatchIds ?? []).filter((d) => dispatchIds.includes(d))
     if (cited.length !== dispatchIds.length || (vs.dims.some((d) => d.verdict === 'FAIL') && r.output.verdict !== 'FAIL')) {
       vs.dims.push({ dimension: 'Critic 终审', dispatchId: 'critic', verdict: 'FAIL', findings: ['Critic 交叉校验失败：未完整引用分派记录或与各维结论矛盾'] })
@@ -786,7 +888,7 @@ async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
       fixDirectives: directives, // 修复指令透传：修复后的构建以修复上下文执行
       vars: { round: String(vs.round) },
     })
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'build')
     buildOk = r.output.ok === true
     if (buildOk) break
     if (attempt >= buildBudget) {
@@ -804,7 +906,7 @@ async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
       fixDirectives: directives,
       vars: { round: String(vs.round) },
     })
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'test')
     testOk = r.output.ok === true
     testCases = r.output.cases ?? 0
     if (testOk) break
@@ -815,15 +917,21 @@ async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
 
   // ---- 测试门（测试是否真跑、是否通过——证据同屏，读阶段注册表单源按轮次渲染路径） ----
   await platform.syncArtifacts(taskId) // 评审报告/构建日志/测试报告落索引 + artifact_written 留痕
-  const materials = await gateMaterials(platform, taskId, 'execute', ['build', 'test'], { round: vs.round })
+  const materials = await gateMaterials(platform, taskId, 'execute', ['build', 'test', 'test-case-design'], { round: vs.round })
   const dimReports = vs.dims.map((d) => `- ${d.dimension}：${d.verdict}`).join('\n')
   materials.push({ ref: 'dims', label: '维度评审结论', kind: 'report', content: dimReports })
+  // 测试轨产物并入证据同屏：自动化用例清单（delivery/test/auto/ 动态目录，读盘列文件）
+  const autoDir = path.join(platform.store.taskDir(taskId), 'delivery', 'test', 'auto')
+  const autoFiles = await fs.readdir(autoDir).catch(() => [] as string[])
+  if (autoFiles.length > 0) {
+    materials.push({ ref: 'auto-cases', label: '自动化用例清单（测试轨生成）', kind: 'report', content: autoFiles.map((f) => `- delivery/test/auto/${f}`).join('\n') })
+  }
 
   await raiseGate(platform, taskId, {
     kind: 'test',
-    question: `测试确认：${testCases} 个用例真跑且通过、构建通过，是否认可进入交付？`,
-    digest: '测试门：判「测试是否真跑、是否通过」（证据同屏，非口头自报）',
-    preface: '多维评审 + Critic 终审 + 构建 + 测试已完成；测试证据见材料选区。',
+    question: `测试确认：${testCases} 个用例真跑且通过、构建通过${autoFiles.length > 0 ? `，测试轨产出 ${autoFiles.length} 个自动化用例文件` : ''}，是否认可进入交付？`,
+    digest: '测试门：判「测试是否真跑、是否通过」（证据同屏含测试轨产物，非口头自报）',
+    preface: '多维评审 + Critic 终审 + 构建 + 测试 + 测试轨（用例设计/自动化生成）已完成；测试证据见材料选区。',
     context: `维度结论：${dimReports}`,
     materials,
     options: [
@@ -918,7 +1026,7 @@ async function executeDeliverPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
       purpose: '生成交付材料（MR 描述 + 证据索引）',
       vars: { title: fresh.title },
     })
-    await clearStageOutput(platform, taskId)
+    await clearStageOutput(platform, taskId, 'deliver')
     if (res.interrupted) return 'wait'
     if (res.failed) return failTask(platform, taskId, `交付材料生成失败：${res.failureSummary ?? ''}`)
 
@@ -1075,9 +1183,11 @@ async function rollbackStage(platform: Platform, taskId: string, target: StageId
     reentry: true,
     round: state.stageRounds[state.stage] ?? 1,
   })
-  // 段内检查点归位：回退进执行段 → 回到编码小节（修复模式）；回退出执行段 → 清检查点
-  if (target === 'execute') await saveExecutePhase(platform, taskId, 'code')
-  else await clearExecutePhase(platform, taskId)
+  // 段内检查点归位：回退进执行段 → 回到编码小节（修复模式，轨道标记清空重跑开发轨）；回退出执行段 → 清检查点
+  if (target === 'execute') {
+    await saveExecutePhase(platform, taskId, 'code')
+    await clearRailMarkers(platform, taskId) // 修复轮重跑开发轨；测试轨按需重跑（产物派生自测试 SPEC，重生成幂等）
+  } else await clearExecutePhase(platform, taskId)
   platform.bus.emit({ type: 'stage', taskId, state })
   return 'continue'
 }

@@ -120,12 +120,19 @@ describe('E2E：需求→合入（clean 剧本 · fast playbook）', () => {
     const w = (stage: string, p: string): boolean => written.some((e) => e.stage === stage && (e.payload as { path: string }).path === p)
     expect(w('requirement', 'process/baseline.md'), 'requirement 应产出基线（intake 作业）').toBe(true)
     expect(w('requirement', 'process/decisions.json'), 'requirement 应产出决策记录（clarify 作业）').toBe(true)
+    expect(w('requirement', 'delivery/requirement.md'), 'requirement 应产出需求分析 SPEC（clarify 作业，交付区）').toBe(true)
     expect(w('architecture', 'delivery/architecture.md'), 'architecture 应产出架构 SPEC').toBe(true)
     expect(w('design', 'delivery/contract/api-contract.json'), 'design 应产出契约单源').toBe(true)
+    expect(w('execute', 'process/ar-design.md'), 'execute 应产出 AR 级设计摘要（ar-design 作业）').toBe(true)
+    expect(w('execute', 'process/test-cases.md'), 'execute 应产出测试用例集（测试轨①）').toBe(true)
     expect(w('execute', 'process/test-r1.md'), 'execute 应产出测试报告（验证小节）').toBe(true)
     expect(
       written.some((e) => e.stage === 'execute' && (e.payload as { path: string }).path.startsWith('delivery/src/')),
       'execute 应产出实现代码（编码小节）',
+    ).toBe(true)
+    expect(
+      written.some((e) => e.stage === 'execute' && (e.payload as { path: string }).path.startsWith('delivery/test/auto/')),
+      'execute 应产出自动化用例（测试轨③）',
     ).toBe(true)
   })
 
@@ -136,9 +143,11 @@ describe('E2E：需求→合入（clean 剧本 · fast playbook）', () => {
 
     const ls = await git(ddir, 'ls-files')
     const files = ls.out.split('\n').filter(Boolean)
+    expect(files.some((f) => f === 'requirement.md' || f.endsWith('/requirement.md'))).toBe(true)
     expect(files.some((f) => f === 'spec.md' || f.endsWith('/spec.md') || f.startsWith('spec'))).toBe(true)
     expect(files.some((f) => f.includes('api-contract.json'))).toBe(true)
     expect(files.some((f) => f.startsWith('src/'))).toBe(true)
+    expect(files.some((f) => f.startsWith('test/auto/'))).toBe(true) // 测试轨自动化用例入 git
     // 过程区物理隔离：baseline/评审报告不在 git 内
     expect(files.every((f) => !f.startsWith('../process') && !f.includes('baseline.md'))).toBe(true)
     expect(await git(ddir, 'cat-file', '-e', 'HEAD:baseline.md').then((r) => r.ok)).toBe(false)

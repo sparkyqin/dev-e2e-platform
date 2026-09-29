@@ -35,7 +35,7 @@ export default function TasksView(): React.JSX.Element {
               <button className={`toggle-btn ${view === 'grid' ? 'on' : ''}`} role="tab" aria-selected={view === 'grid'} onClick={() => switchView('grid')}>
                 ▦ 卡片
               </button>
-              <button className={`toggle-btn ${view === 'board' ? 'on' : ''}`} role="tab" aria-selected={view === 'board'} onClick={() => switchView('board')} title="阶段看板：列=9 阶段主干；拖拽不绕门（门等待卡拖动直达拍板）">
+              <button className={`toggle-btn ${view === 'board' ? 'on' : ''}`} role="tab" aria-selected={view === 'board'} onClick={() => switchView('board')} title="阶段看板：设计段（人与AI共创）+ 执行段（AI自动化+人审核）分组；拖拽不绕门（门等待卡拖动直达拍板）">
                 ▤ 看板
               </button>
             </div>

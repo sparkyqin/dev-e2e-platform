@@ -21,15 +21,17 @@
 
 ## 研发作业流（v2 六段主干）
 
-设计段 4（人与 AI 共创）+ 执行段 1（AI 自动 + 人审核）+ 终态 1。v1 的 intake+clarify 合并为 requirement 的段内检查点，code+verify+deliver 合并为 execute 的段内循环（编码→验证→交付），review 连拍为 test-design 出口的第二门（设计段收口）。
+**两段理念**（首页步骤轨/看板以分组横幅呈现，单源 `STAGE_PHASES`）：**设计段·人与AI共创**（requirement~test-design，人定方向拍板，AI 加速产出）+ **执行段·AI自动化生成·人审核**（execute~merged，AI 推进流水线，人守测试门与交付门）。
+
+设计段 4（人与 AI 共创）+ 执行段 1（AI 自动 + 人审核）+ 终态 1。v1 的 intake+clarify 合并为 requirement 的段内检查点，code+verify+deliver 合并为 execute 的段内循环（AR设计→双轨编码→验证→交付），review 连拍为 test-design 出口的第二门（设计段收口）。
 
 | 段 | 段内作业 | 交付物 | 出口门（拍板人） |
 |------|---------|--------|-------------|
-| requirement 需求 | 基线建立（段内检查点，双层自动校验）+ IR→SR→AR 三级分解 | `process/baseline.md`（过程区）+ 三级分解 + 决策记录 | 事实门（需求方；超时降级待追认） |
+| requirement 需求 | 基线建立（段内检查点，双层自动校验）+ IR→SR→AR 三级分解（解决方案 SE 视角） | `delivery/requirement.md`（需求分析 SPEC）+ `process/baseline.md` + 三级分解 + 决策记录 | 事实门（需求方；超时降级待追认） |
 | architecture 架构 | 架构设计 SPEC | `delivery/architecture.md`（架构分析/边界设计/业务流） | 事实门（架构师，缺省责任人） |
 | design 功能设计 | WHAT/HOW 双产物 + 契约单源 | `delivery/spec.md` + `design.md` + 契约 + 功能 FMEA | 事实门（责任人） |
 | test-design 测试设计 | 测试 SPEC（连拍：测试设计门 → 方案评审门收口设计段） | `delivery/test-design.md` | 事实门（TSE）→ 评审门（评审人，唯一拍板放行进编码） |
-| execute 执行与编码 | 段内循环：编码（自报+文件证据裁决）→ 多维评审+Critic+构建+测试 → MR 监听；AR 并行走「拆分门→子任务并行→聚合验收门」 | 代码 + UT + MST + MR + 就绪证据 | 测试门（责任人）/ 拆分门（责任人）/ 聚合验收门（TSE）/ MR 反馈决策门（责任人）/ 交付门（合入方，永远人工 fail-closed） |
+| execute 执行与编码 | 段内循环：AR 级设计 → **双轨并行**（开发轨：编码+UT+MST ∥ 测试轨：测试用例设计→自动化用例 DESIGN→自动化用例生成）→ 多维评审+Critic+构建+测试 → MR 监听；AR 并行走「拆分门→子任务并行→聚合验收门」 | 代码 + UT + MST + **自动化用例（`delivery/test/auto/`）** + MR + 就绪证据 | 测试门（责任人，证据含测试轨产物）/ 拆分门（责任人）/ 聚合验收门（TSE）/ MR 反馈决策门（责任人）/ 交付门（合入方，永远人工 fail-closed） |
 | merged 已合入 | 终态 | — | —（合入后问题仍可回退 execute） |
 
 回退边（声明式，全留痕，见 `domain/state-machine.ts`）：execute→requirement/architecture/design/test-design/execute（段内修复）；test-design→requirement/architecture/design/test-design；design→requirement/architecture；architecture→requirement；merged→execute（合入后问题）。

@@ -4,9 +4,18 @@ import type { StageId } from '@ai-platform/shared'
  * AI 引擎抽象（L3 能力插件 · 编码代理引擎）
  *
  * 平台内核（状态机/门禁/产物/调度）不依赖具体引擎；引擎只负责「干一个阶段的活」：
- * 在任务工作区内按指令产出产物与结构化输出（.flow/stage-output.json），过程以事件流形式吐出。
+ * 在任务工作区内按指令产出产物与结构化输出（.flow/stage-output-{job}.json），过程以事件流形式吐出。
  * 实现：OpenCodeEngine / ClaudeEngine / SimulatedEngine。
  */
+
+/**
+ * 结构化输出按作业分文件（.flow/stage-output-{job}.json）：
+ * 双轨并行（code ∥ 测试轨）时多个作业同时在跑，单文件单写者会互相覆盖。
+ * 旧版单文件 stage-output.json 仍可读（升级兼容 in-flight 任务），写入一律走 per-job。
+ */
+export function stageOutputPath(job: string): string {
+  return `.flow/stage-output-${job}.json`
+}
 
 export type EngineEvent =
   | { kind: 'session_started'; sessionId: string }
@@ -76,6 +85,12 @@ export interface StageOutput {
   claimedFiles?: string[]
   done?: boolean
   summary?: string
+  // ar-design（AR 级设计摘要）
+  arDesignReady?: boolean
+  // 测试轨：test-case-design / auto-case-design / auto-case-generate
+  testCasesReady?: boolean
+  autoCasesReady?: boolean
+  files?: string[]
   // verify-review
   verdict?: 'PASS' | 'WARN' | 'FAIL'
   findings?: string[]

@@ -57,6 +57,7 @@ describe('E2E：AR 并行（父拆分 → 子任务并行执行 → 聚合验收
       const { ArtifactManager } = await import('../src/extension/artifacts.js')
       const am = new ArtifactManager(platform.store.taskDir(subId))
       expect(await am.read('delivery/architecture.md')).toBeTruthy() // 父任务架构 SPEC 已拷贝
+      expect(await am.read('delivery/requirement.md')).toBeTruthy() // 父任务需求分析 SPEC 已拷贝
     }
     // 开发轮转：3 个子任务分别由 王浩/刘阳/陈静 承接
     const owners = new Set(parent.subtasks!.map((s) => s.ownerName))
