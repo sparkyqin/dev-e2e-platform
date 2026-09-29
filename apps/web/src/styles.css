@@ -973,7 +973,9 @@ a { color: var(--brand); text-decoration: none; }
 .board-col-group.design .board-group-label { color: #3a52c4; }
 .board-col-group.execute .board-group-label { color: #6d3bd6; }
 .board-group-hint { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.board-group-cols { display: flex; gap: 10px; }
+/* flex:1 + min-height:0：列容器被约束在组高内（否则 flex 项 min-height:auto=内容高，
+   列体 overflow-y:auto 不生效，超出视口的卡完全不可达——分组重构引入的回归） */
+.board-group-cols { display: flex; gap: 10px; flex: 1; min-height: 0; }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1280px) {
