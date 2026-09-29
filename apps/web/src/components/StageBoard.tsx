@@ -79,13 +79,19 @@ export default function StageBoard({ cards, onOpen }: Props): React.JSX.Element 
 
   return (
     <div className="stage-board">
+      {/* 两段分组横幅（顶部一行）：设计段（人与AI共创）｜执行段（AI自动化+人审核） */}
+      <div className="pipe-phases-banner board-phases-banner" role="group" aria-label="阶段两段分组">
+        {STAGE_PHASES.map((g) => (
+          <span key={g.id} className={`pipe-phase ${g.id}`} title={`${g.label}：${g.hint}`}>
+            <span className={`pipe-phase-dot ${g.id}`} />
+            <span className="pipe-phase-label">{g.label}</span>
+            <span className="pipe-phase-hint">{g.hint}</span>
+          </span>
+        ))}
+      </div>
+      <div className="stage-board-cols">
       {STAGE_PHASES.map((g) => (
         <div key={g.id} className={`board-col-group ${g.id}`} role="group" aria-label={g.label}>
-          <div className="board-group-head" title={`${g.label}：${g.hint}`}>
-            <span className={`board-group-dot ${g.id}`} />
-            <span className="board-group-label">{g.label}</span>
-            <span className="board-group-hint">{g.hint}</span>
-          </div>
           <div className="board-group-cols">
             {g.stages.map((stage) => {
               const meta = STAGES[stage]
@@ -132,6 +138,7 @@ export default function StageBoard({ cards, onOpen }: Props): React.JSX.Element 
           </div>
         </div>
       ))}
+      </div>
       {quickDecideId && <QuickDecide taskId={quickDecideId} onClose={() => setQuickDecideId(null)} onDecided={refreshCards} />}
       {peekId && !quickDecideId && (
         <BoardPeek

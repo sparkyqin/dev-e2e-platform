@@ -175,14 +175,20 @@ export default function PipelineBoard({
   }, [focus])
 
   return (
-    <div className="pipeline-board" ref={boardRef} role="list">
+    <div className="pipeline-board" ref={boardRef}>
+      {/* 两段分组横幅（顶部一行）：设计段（人与AI共创）｜执行段（AI自动化+人审核） */}
+      <div className="pipe-phases-banner" role="group" aria-label="阶段两段分组">
+        {STAGE_PHASES.map((g) => (
+          <span key={g.id} className={`pipe-phase ${g.id}`} title={`${g.label}：${g.hint}`}>
+            <span className={`pipe-phase-dot ${g.id}`} />
+            <span className="pipe-phase-label">{g.label}</span>
+            <span className="pipe-phase-hint">{g.hint}</span>
+          </span>
+        ))}
+      </div>
+      <div className="pipeline-board-cols" role="list">
       {STAGE_PHASES.map((g) => (
         <div key={g.id} className={`pipe-col-group ${g.id}`} role="group" aria-label={g.label}>
-          <div className="pipe-col-group-head" title={`${g.label}：${g.hint}`}>
-            <span className={`pipe-col-group-dot ${g.id}`} />
-            <span className="pipe-col-group-label">{g.label}</span>
-            <span className="pipe-col-group-hint">{g.hint}</span>
-          </div>
           <div className="pipe-col-group-cols">
             {g.stages.map((sid) => {
               const i = STAGE_ORDER.indexOf(sid)
@@ -262,6 +268,7 @@ export default function PipelineBoard({
           </div>
         </div>
       ))}
+      </div>
     </div>
   )
 }
