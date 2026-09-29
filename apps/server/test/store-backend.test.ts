@@ -107,7 +107,7 @@ describe('pg-mem 内存模拟：PG 后端 SQL 路径（本地无 PG 时的真执
     const log = platform.store.eventLog(st.taskId)
     await Promise.all(
       Array.from({ length: 12 }, (_, i) =>
-        log.append(st.taskId, 'intake', { type: 'system' }, 'assistant_message', { text: `并发事件 ${i}` }),
+        log.append(st.taskId, 'requirement', { type: 'system' }, 'assistant_message', { text: `并发事件 ${i}` }),
       ),
     )
     const events = await log.read()
@@ -182,7 +182,7 @@ describe.skipIf(!pgUrl)('PG 后端：跨进程锁 + 重启持久化（真实实�
     const log = platform.store.eventLog(st.taskId)
     await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
-        log.append(st.taskId, 'intake', { type: 'system' }, 'assistant_message', { text: `并发事件 ${i}` }),
+        log.append(st.taskId, 'requirement', { type: 'system' }, 'assistant_message', { text: `并发事件 ${i}` }),
       ),
     )
     const events = await log.read()

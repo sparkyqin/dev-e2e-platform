@@ -182,13 +182,13 @@ export class Platform {
       mode: req.mode,
       paradigm: this.playbooks.get(req.playbookId).customizable.paradigm,
       playbookId: req.playbookId,
-      stage: 'intake',
+      stage: 'requirement',
       status: internal?.startHeld ? 'user-held' : 'queued',
       stateVersion: 1,
       currentStepIndex: 1,
       createdAt: nowIso(),
       updatedAt: nowIso(),
-      stageRounds: { intake: 1 },
+      stageRounds: { requirement: 1 },
       completedStages: [],
       repairRounds: 0,
       unattended: req.unattended,
@@ -215,8 +215,8 @@ export class Platform {
       scenario: req.scenario,
     }
     await this.store.create(state)
-    await this.store.eventLog(taskId).append(taskId, 'intake', { type: 'system' }, 'stage_entered', {
-      stage: 'intake',
+    await this.store.eventLog(taskId).append(taskId, 'requirement', { type: 'system' }, 'stage_entered', {
+      stage: 'requirement',
       reentry: false,
       round: 1,
     })

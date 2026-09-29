@@ -103,8 +103,8 @@ async function driveTask(taskId, depth = 0, maxSteps = 150) {
       continue
     }
 
-    // deliver/watching：MR 注入流水线绿 + approve → 举交付门
-    if (s.stage === 'deliver' && s.mr && !d.delivery?.mergeReadiness?.ready) {
+    // execute/watching：MR 注入流水线绿 + approve → 举交付门
+    if (s.stage === 'execute' && s.mr && !d.delivery?.mergeReadiness?.ready) {
       const mrState = d.delivery?.mrState
       if (mrState !== 'merged') {
         const hasGreen = d.delivery?.pipelines?.some((p) => p.state === 'success' && p.sha === s.mr.sha)

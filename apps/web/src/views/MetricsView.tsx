@@ -113,7 +113,7 @@ export default function MetricsView(): React.JSX.Element {
                   >
                     <span className="mb-label">{b.label}</span>
                     <span className="mb-track">
-                      <span className={`mb-fill ${b.sid === 'review' || b.sid === 'intake' ? '' : 'auto'}`} style={{ width: `${Math.max(3, Math.round((b.ms / stageMax) * 100))}%` }} />
+                      <span className={`mb-fill ${b.sid === 'requirement' || b.sid === 'test-design' ? '' : 'auto'}`} style={{ width: `${Math.max(3, Math.round((b.ms / stageMax) * 100))}%` }} />
                     </span>
                     <span className="mb-val">{fmtDur(b.ms)}</span>
                     {s.stageFirstPassRate[b.sid] !== undefined && (

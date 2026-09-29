@@ -2,7 +2,7 @@ import type { FeedbackItem, TriageCategory } from '@ai-platform/shared'
 import { applyRollback, canRollbackTo } from '../domain/state-machine.js'
 import { newId, nowIso } from '../domain/util.js'
 import { raiseGate } from './gates.js'
-import { loadDeliveryState, saveDeliveryState } from './workers.js'
+import { loadDeliveryState, saveDeliveryState, saveExecutePhase } from './workers.js'
 import type { Platform } from './platform.js'
 
 /**
@@ -110,14 +110,16 @@ export async function watchDelivery(platform: Platform, taskId: string): Promise
 
   for (const f of autoFixItems) {
     await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'feedback-auto-fix' } }, (s) => {
-      if (canRollbackTo(s.stage, 'code')) {
-        applyRollback(s, 'code', `MR 反馈自动修复：${f.text.slice(0, 80)}`)
+      if (canRollbackTo(s.stage, 'execute')) {
+        applyRollback(s, 'execute', `MR 反馈自动修复：${f.text.slice(0, 80)}`)
         s.pendingInstructions.push(`MR 反馈（${f.source}）请修复：${f.text}`)
       }
     })
-    await log.append(taskId, 'deliver', { type: 'system' }, 'rollback', {
-      from: 'deliver',
-      to: 'code',
+    // 段内检查点归位：修复模式回编码小节（watcher 直改真源，不经 rollbackStage，手动归位）
+    await saveExecutePhase(platform, taskId, 'code')
+    await log.append(taskId, 'execute', { type: 'system' }, 'rollback', {
+      from: 'execute',
+      to: 'execute',
       reason: `反馈分诊=自动可修（不惊动人）：${f.text.slice(0, 60)}`,
       declaredBy: 'platform',
       declaredByName: '平台（delivery_watch）',
@@ -134,7 +136,7 @@ export async function watchDelivery(platform: Platform, taskId: string): Promise
       context: '自动可修的反馈不会惊动你；这条需要你拍板处理方式。',
       materials: [{ ref: 'feedback', label: '反馈原文', kind: 'evidence', content: f.text }],
       options: [
-        { action: 'rollback', rollbackTarget: 'code', label: '采纳：回编码按意见修复', tone: 'primary' },
+        { action: 'rollback', rollbackTarget: 'execute', label: '采纳：回编码按意见修复', tone: 'primary' },
         { action: 'approve', label: '不采纳（waive，留痕）', tone: 'neutral' },
       ],
       soleDecider: st.people.owner,
@@ -142,7 +144,7 @@ export async function watchDelivery(platform: Platform, taskId: string): Promise
   }
 
   for (const f of infoItems) {
-    await log.append(taskId, 'deliver', { type: 'system' }, 'assistant_message', {
+    await log.append(taskId, 'execute', { type: 'system' }, 'assistant_message', {
       text: `反馈仅提示已记录留痕：${f.text.slice(0, 100)}`,
     })
   }

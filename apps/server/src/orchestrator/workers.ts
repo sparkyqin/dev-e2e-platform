@@ -29,24 +29,16 @@ export interface WorkerCtx {
 
 export async function runStageWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   switch (ctx.state.stage) {
-    case 'intake':
-      return intakeWorker(ctx)
-    case 'clarify':
-      return clarifyWorker(ctx)
+    case 'requirement':
+      return requirementWorker(ctx)
     case 'architecture':
       return architectureWorker(ctx)
     case 'design':
       return designWorker(ctx)
     case 'test-design':
       return testDesignWorker(ctx)
-    case 'review':
-      return reviewWorker(ctx)
-    case 'code':
-      return codeWorker(ctx)
-    case 'verify':
-      return verifyWorker(ctx)
-    case 'deliver':
-      return deliverWorker(ctx)
+    case 'execute':
+      return executeWorker(ctx)
     case 'merged':
       return 'stop'
   }
@@ -91,9 +83,9 @@ async function priorEvidenceMaterials(platform: Platform, taskId: string, untilS
   return materials
 }
 
-// ==================== ① 接单开张（场景1） ====================
+// ==================== ① 需求（愿景节点1：需求验收 → 系统需求分析） ====================
 
-async function intakeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+async function requirementWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
 
@@ -105,36 +97,42 @@ async function intakeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     platform.recordSkillsInjected(taskId, injected)
   }
 
-  // 知识伴随注入（OKL 三层按需叠加 + 注入摘要可观测）
-  const injectedKnowledge = await platform.injectKnowledge(taskId, 'intake')
+  // ---- 段内检查点①：基线建立（双层自动校验；v1「接单开张」降级为段内检查点，不占阶段格）----
+  const baselineOkMarker = path.join(platform.store.flowDir(taskId), 'baseline-ok')
+  if (!(await fs.stat(baselineOkMarker).catch(() => null))) {
+    const knowledge = await platform.injectKnowledge(taskId, 'requirement')
 
-  const res = await runEngine(platform, state, 'intake', {
-    purpose: `${state.mode === 'greenfield' ? '绿地新建' : '存量逆向'}：建立基线（过程区）`,
-    injectedKnowledge,
-    vars: { mode: state.mode, repo: state.repo, module: state.module, title: state.title, requirementText: state.requirementText },
-  })
-  await clearStageOutput(platform, taskId)
+    const res = await runEngine(platform, state, 'intake', {
+      purpose: `${state.mode === 'greenfield' ? '绿地新建' : '存量逆向'}：建立基线（过程区）`,
+      injectedKnowledge: knowledge,
+      vars: { mode: state.mode, repo: state.repo, module: state.module, title: state.title, requirementText: state.requirementText },
+    })
+    await clearStageOutput(platform, taskId)
 
-  if (res.interrupted) return 'wait'
-  if (res.failed) return failTask(platform, taskId, `接单开张阶段引擎失败：${res.failureSummary ?? ''}`)
+    if (res.interrupted) return 'wait'
+    if (res.failed) return failTask(platform, taskId, `需求阶段基线建立引擎失败：${res.failureSummary ?? ''}`)
 
-  // 双层自动校验（机器门，不靠人）：程序规则校验 + AI 复核（引擎 baselineReady）
-  const am = new ArtifactManager(platform.store.taskDir(taskId))
-  const baseline = await am.read('process/baseline.md')
-  const ruleOk =
-    !!baseline && (state.mode === 'greenfield' ? baseline.includes('绿地') || baseline.includes('新建') : baseline.includes('根级配置') || baseline.includes('改动切片'))
-  const aiOk = res.output.baselineReady === true
-  if (!ruleOk || !aiOk) {
-    if (ctx.attempts < 1) return 'continue' // 重试一次
-    return failTask(platform, taskId, `基线双层自动校验未通过（程序规则 ${ruleOk ? '✓' : '✗'} / AI 复核 ${aiOk ? '✓' : '✗'}）`)
+    // 双层自动校验（机器门，不靠人）：程序规则校验 + AI 复核（引擎 baselineReady）
+    const am = new ArtifactManager(platform.store.taskDir(taskId))
+    const baseline = await am.read('process/baseline.md')
+    const ruleOk =
+      !!baseline && (state.mode === 'greenfield' ? baseline.includes('绿地') || baseline.includes('新建') : baseline.includes('根级配置') || baseline.includes('改动切片'))
+    const aiOk = res.output.baselineReady === true
+    if (!ruleOk || !aiOk) {
+      if (ctx.attempts < 1) return 'continue' // 重试一次
+      return failTask(platform, taskId, `基线双层自动校验未通过（程序规则 ${ruleOk ? '✓' : '✗'} / AI 复核 ${aiOk ? '✓' : '✗'}）`)
+    }
+    await platform.syncArtifacts(taskId)
+    // 检查点落盘：评审驳回回退需求时重跑分解，不重跑基线（reentrySkipsAiRerun）
+    await fs.writeFile(baselineOkMarker, JSON.stringify({ at: nowIso(), mode: state.mode }), 'utf8')
+    return 'continue' // 检查点已过，重新入轨做三级分解
   }
-  await platform.syncArtifacts(taskId)
-  return advanceStage(platform, taskId, 'clarify')
+
+  // ---- 段内检查点②：IR→SR→AR 三级分解 + 业务事实门 ----
+  return requirementClarifyPart(ctx)
 }
 
-// ==================== ② 需求澄清（场景2） ====================
-
-async function clarifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+async function requirementClarifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
   const log = platform.store.eventLog(taskId)
@@ -163,7 +161,7 @@ async function clarifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     return advanceStage(platform, taskId, 'architecture')
   }
 
-  const knowledge = await platform.injectKnowledge(taskId, 'clarify')
+  const knowledge = await platform.injectKnowledge(taskId, 'requirement')
 
   const directives = await consumeInstructions(platform, taskId)
   const res = await runEngine(platform, state, 'clarify', {
@@ -176,7 +174,7 @@ async function clarifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   await clearStageOutput(platform, taskId)
 
   if (res.interrupted) return 'wait'
-  if (res.failed) return failTask(platform, taskId, `澄清阶段引擎失败：${res.failureSummary ?? ''}`)
+  if (res.failed) return failTask(platform, taskId, `需求分解引擎失败：${res.failureSummary ?? ''}`)
 
   // 产物落索引 + artifact_written 留痕（本阶段产物记本阶段账，不等下一阶段补记）
   await platform.syncArtifacts(taskId)
@@ -229,7 +227,7 @@ async function architectureWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       return advanceStage(platform, taskId, 'design')
     }
     if (decision?.action === 'rollback') {
-      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'clarify', `架构拍板打回：${decision.reason ?? ''}`)
+      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'requirement', `架构拍板打回：${decision.reason ?? ''}`)
     }
     return 'wait'
   }
@@ -262,7 +260,7 @@ async function architectureWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     materials,
     options: [
       { action: 'approve', label: '架构通过（主权移交开发）', tone: 'primary' },
-      { action: 'rollback', rollbackTarget: 'clarify', label: '打回需求澄清', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'requirement', label: '打回需求', tone: 'danger' },
     ],
     soleDecider: decider,
   })
@@ -289,7 +287,7 @@ async function designWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       return advanceStage(platform, taskId, 'test-design')
     }
     if (decision?.action === 'rollback') {
-      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'clarify', `设计拍板打回：${decision.reason ?? ''}`)
+      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'requirement', `设计拍板打回：${decision.reason ?? ''}`)
     }
     return 'wait'
   }
@@ -336,14 +334,14 @@ async function designWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     options: [
       { action: 'approve', label: '方案通过（主权移交开发）', tone: 'primary' },
       { action: 'rollback', rollbackTarget: 'architecture', label: '打回系统架构设计', tone: 'danger' },
-      { action: 'rollback', rollbackTarget: 'clarify', label: '打回需求澄清', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'requirement', label: '打回需求', tone: 'danger' },
     ],
     soleDecider: state.people.owner,
   })
   return 'wait'
 }
 
-// ==================== ⑤ 测试设计（研发作业流 · TSE 拍板） ====================
+// ==================== ④ 测试设计 + 方案评审连拍（愿景节点4 · 设计段收口双门） ====================
 
 async function testDesignWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
@@ -352,15 +350,50 @@ async function testDesignWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const gate = state.gate
   const decider = state.people.tse ?? state.people.owner
 
+  // ---- 连拍第二门：方案评审门（评审人唯一拍板，铁门超时只升级；通过=设计段收口放行进编码） ----
+  if (gate && gate.kind === 'review') {
+    if (gate.status === 'raised') return 'wait' // 等拍板（超时升级由 tick 处理）
+    const decision = gate.decision
+    const round = state.repairRounds + 1
+    // 评审报告（首轮与每轮返工均留痕）
+    const report = [
+      `# 评审报告（第 ${round} 轮）`,
+      '',
+      `- 任务：#${state.seq} ${state.title}`,
+      `- 评审人：${gate.soleDecider.name}（唯一拍板）`,
+      `- 会诊：${gate.participants.filter((p) => p.role === 'consulted').map((p) => p.name).join('、') || '无'}`,
+      `- 结论：${decision?.action === 'approve' ? '通过放行' : `驳回，声明式回退到「${decision?.rollbackTarget}」`}`,
+      `- 理由：${decision?.reason ?? '—'}`,
+      '',
+      '## 批注与讨论',
+      ...(await reviewAnnotations(platform, taskId)),
+    ].join('\n')
+    const am = new ArtifactManager(platform.store.taskDir(taskId))
+    await am.write(`process/review-report-r${round}.md`, report, 'test-design', 'reviewer')
+    await platform.syncArtifacts(taskId)
+
+    if (decision?.action === 'approve') {
+      await log.append(taskId, state.stage, { type: 'system' }, 'assistant_message', {
+        text: '方案评审通过（设计段收口）：放行进入执行与编码。',
+      })
+      return advanceStage(platform, taskId, 'execute')
+    }
+    if (decision?.action === 'rollback' || decision?.action === 'reject') {
+      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'design', `评审门驳回：${decision.reason ?? ''}`)
+    }
+    return 'wait'
+  }
+
+  // ---- 第一门：测试设计门（TSE 拍板；通过后连拍举评审门，不换阶段） ----
   if (gate && gate.kind === 'fact') {
     if (gate.status === 'raised') return 'wait'
     const decision = gate.decision
     if (gate.status === 'degraded' || decision?.action === 'approve') {
       await log.append(taskId, state.stage, { type: 'system' }, 'assistant_message', {
-        text: '测试设计已拍板：产物主权由 TSE 移交开发；进入方案评审。',
+        text: '测试设计已拍板：产物主权由 TSE 移交开发；连拍举方案评审门（设计段收口）。',
       })
       await platform.syncArtifacts(taskId)
-      return advanceStage(platform, taskId, 'review')
+      return raiseReviewGate(platform, taskId)
     }
     if (decision?.action === 'rollback') {
       return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'design', `测试设计拍板打回：${decision.reason ?? ''}`)
@@ -395,63 +428,28 @@ async function testDesignWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     context: '测试点覆盖验收标准与边界（含 DFX 口径）；测试策略明确分层（UT/MST/自动化用例归属）；评审门将以测试设计覆盖度作为证据充分性判据。',
     materials,
     options: [
-      { action: 'approve', label: '测试设计通过（主权移交开发）', tone: 'primary' },
+      { action: 'approve', label: '测试设计通过（连拍举评审门）', tone: 'primary' },
       { action: 'rollback', rollbackTarget: 'design', label: '打回功能设计', tone: 'danger' },
-      { action: 'rollback', rollbackTarget: 'clarify', label: '打回需求澄清', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'requirement', label: '打回需求', tone: 'danger' },
     ],
     soleDecider: decider,
   })
   return 'wait'
 }
 
-// ==================== ⑥ 方案评审（场景4） ====================
-
-async function reviewWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
-  const { platform, state } = ctx
-  const taskId = state.taskId
-  const gate = state.gate
-
-  if (gate && gate.kind === 'review') {
-    if (gate.status === 'raised') return 'wait' // 等拍板（超时升级由 tick 处理）
-    const decision = gate.decision
-    const round = state.repairRounds + 1
-    // 评审报告（首轮与每轮返工均留痕）
-    const report = [
-      `# 评审报告（第 ${round} 轮）`,
-      '',
-      `- 任务：#${state.seq} ${state.title}`,
-      `- 评审人：${gate.soleDecider.name}（唯一拍板）`,
-      `- 会诊：${gate.participants.filter((p) => p.role === 'consulted').map((p) => p.name).join('、') || '无'}`,
-      `- 结论：${decision?.action === 'approve' ? '通过放行' : `驳回，声明式回退到「${decision?.rollbackTarget}」`}`,
-      `- 理由：${decision?.reason ?? '—'}`,
-      '',
-      '## 批注与讨论',
-      ...(await reviewAnnotations(platform, taskId)),
-    ].join('\n')
-    const am = new ArtifactManager(platform.store.taskDir(taskId))
-    await am.write(`process/review-report-r${round}.md`, report, 'review', 'reviewer')
-    await platform.syncArtifacts(taskId)
-
-    if (decision?.action === 'approve') {
-      return advanceStage(platform, taskId, 'code')
-    }
-    if (decision?.action === 'rollback' || decision?.action === 'reject') {
-      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'design', `评审门驳回：${decision.reason ?? ''}`)
-    }
-    return 'wait'
-  }
-
-  // 举评审门：证据同屏（前序阶段全部证据面产物，读阶段注册表单源：架构/功能/测试设计/契约/决策记录）
+/** 举方案评审门（设计段收口）：证据同屏前序阶段全部证据面产物（按阶段轨顺序，完整证据链） */
+async function raiseReviewGate(platform: Platform, taskId: string): Promise<WorkerOutcome> {
+  const state = await platform.store.load(taskId)
   const am = new ArtifactManager(platform.store.taskDir(taskId))
-  const materials = await priorEvidenceMaterials(platform, taskId, 'review')
+  const materials = await priorEvidenceMaterials(platform, taskId, 'execute')
   const drift = await am.checkDrift([{ path: 'process/contract-view.md' }])
   if (drift.length > 0) materials.push({ ref: 'drift', label: `⚠ 契约视图漂移：${drift.join(', ')}`, kind: 'evidence' })
 
   await raiseGate(platform, taskId, {
     kind: 'review',
-    question: '方案评审：证据已同屏（架构/功能 spec-design/测试设计/契约/决策记录），是否放行进编码？',
+    question: '方案评审：证据已同屏（需求/架构/功能设计/测试设计/契约/决策记录），是否放行进编码？',
     digest: '评审人唯一拍板；可邀请会诊；驳回请声明式回退',
-    preface: '架构师/TSE/开发均已拍板各自方案（主权在开发）；按流程进入方案评审。',
+    preface: '架构师/TSE/开发均已拍板各自方案（主权在开发）；设计段收口评审。',
     context: '评审门判证据充分性（非主观质量）：架构边界清晰、双产物完整、契约单源无漂移、测试设计覆盖验收标准。',
     materials,
     options: [
@@ -459,7 +457,7 @@ async function reviewWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       { action: 'rollback', rollbackTarget: 'test-design', label: '驳回：回退测试设计', tone: 'danger' },
       { action: 'rollback', rollbackTarget: 'design', label: '驳回：回退功能设计', tone: 'danger' },
       { action: 'rollback', rollbackTarget: 'architecture', label: '驳回：回退架构设计', tone: 'danger' },
-      { action: 'rollback', rollbackTarget: 'clarify', label: '驳回：回退需求澄清', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'requirement', label: '驳回：回退需求', tone: 'danger' },
     ],
     soleDecider: state.people.reviewer,
   })
@@ -472,17 +470,61 @@ async function reviewAnnotations(platform: Platform, taskId: string): Promise<st
   return list.map((a) => `- [${a.authorName}] ${a.artifactPath}${a.anchor ? `（${a.anchor}）` : ''}：${a.text}${a.replies.map((r) => `\n  - [${r.authorName}] ${r.text}`).join('')}`)
 }
 
-// ==================== ⑤' AR 并行父任务（执行段拆分 → 聚合收口） ====================
+// ==================== ⑤ 执行与编码（愿景节点5：全功能团队×N；吸收 v1 code+verify+deliver） ====================
+
+/** 执行段段内检查点（.flow/execute-phase.json）：编码→验证→交付是段内循环，不是阶段边界 */
+export type ExecutePhase = 'code' | 'verify' | 'deliver'
+
+export async function loadExecutePhase(platform: Platform, taskId: string): Promise<ExecutePhase> {
+  const f = await readJson<{ phase: ExecutePhase }>(path.join(platform.store.flowDir(taskId), 'execute-phase.json'))
+  return f?.phase ?? 'code'
+}
+
+export async function saveExecutePhase(platform: Platform, taskId: string, phase: ExecutePhase): Promise<void> {
+  await writeJson(path.join(platform.store.flowDir(taskId), 'execute-phase.json'), { phase })
+}
+
+export async function clearExecutePhase(platform: Platform, taskId: string): Promise<void> {
+  try {
+    await fs.rm(path.join(platform.store.flowDir(taskId), 'execute-phase.json'), { force: true })
+  } catch {
+    // ignore
+  }
+}
+
+async function executeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { state } = ctx
+
+  // AR 并行父任务：执行段走「拆分门 → 子任务并行 → 聚合验收门」而非直接编码
+  if (state.arParallel && !state.parentTaskId) return parentExecuteWorker(ctx)
+
+  return executeMainWorker(ctx)
+}
+
+/** 普通执行段：门优先分派（决策后回到举门的小节继续），无门按段内检查点推进 */
+async function executeMainWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { platform, state } = ctx
+  const gate = state.gate
+
+  if (gate && gate.kind === 'test') return verifyGateBranch(ctx) // 测试门（验证小节收口）
+  if (gate && gate.kind === 'fact' && state.mr) return deliverFeedbackGateBranch(ctx) // MR 反馈决策门（交付小节）
+  if (gate && gate.kind === 'delivery') return deliverMergeBranch(ctx) // 交付门（合入）
+
+  const phase = await loadExecutePhase(platform, state.taskId)
+  if (phase === 'verify') return executeVerifyPart(ctx)
+  if (phase === 'deliver') return executeDeliverPart(ctx)
+  return executeCodePart(ctx)
+}
 
 /** 父任务执行段：AR 拆分门（owner 拍）→ spawn 子任务并行 → 聚合验收门（TSE 拍）→ 收口 */
-async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+async function parentExecuteWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
   const log = platform.store.eventLog(taskId)
   const gate = state.gate
 
   // ---- 聚合验收门（test 类铁门，TSE 拍板；超时只升级） ----
-  if (gate && gate.kind === 'test' && gate.stage === 'code') {
+  if (gate && gate.kind === 'test' && gate.stage === 'execute') {
     if (gate.status === 'raised') return 'wait'
     const decision = gate.decision
     if (decision?.action === 'approve') return closeParentMerged(platform, taskId)
@@ -498,9 +540,9 @@ async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
           s.repairRounds += 1
         },
       )
-      await log.append(taskId, 'code', { type: 'system' }, 'rollback', {
-        from: 'code',
-        to: 'code',
+      await log.append(taskId, 'execute', { type: 'system' }, 'rollback', {
+        from: 'execute',
+        to: 'execute',
         reason: `聚合验收不通过：${decision.reason ?? ''}（清空拆分，重新派发 AR）`,
         declaredBy: decision.decidedBy,
         declaredByName: decision.decidedByName,
@@ -512,13 +554,13 @@ async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   }
 
   // ---- AR 拆分门（fact 类，owner 拍板；超时可降级按方案推进待追认） ----
-  if (gate && gate.kind === 'fact' && gate.stage === 'code') {
+  if (gate && gate.kind === 'fact' && gate.stage === 'execute') {
     if (gate.status === 'raised') return 'wait'
     const decision = gate.decision
     if (gate.status === 'degraded' || decision?.action === 'approve') {
       const items = await loadArPlan(platform, taskId)
       if (items.length === 0) {
-        await log.append(taskId, 'code', { type: 'system' }, 'assistant_message', {
+        await log.append(taskId, 'execute', { type: 'system' }, 'assistant_message', {
           text: '拆分方案缺失（ar-plan.json 不存在），重新生成拆分方案。',
         })
         await platform.store.mutate(taskId, { expectedVersion: null }, (s) => {
@@ -541,7 +583,7 @@ async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   if ((state.subtasks?.length ?? 0) > 0) return 'wait'
 
   // ---- 首次进入执行段：跑 AR 拆分作业 → 落拆分方案 → 举拆分门（owner 拍板，证据同屏） ----
-  const knowledge = await platform.injectKnowledge(taskId, 'code')
+  const knowledge = await platform.injectKnowledge(taskId, 'execute')
   const res = await runEngine(platform, state, 'ar-split', {
     purpose: 'AR 拆分：把审核通过的方案拆为可并行的原子需求（每个 AR 可独立实现/独立验收/独立 MR）',
     injectedKnowledge: knowledge,
@@ -558,7 +600,7 @@ async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   await saveArPlan(platform, taskId, items)
 
   // 证据同屏（读阶段注册表单源）：拆分方案 + 三级分解 + 规格
-  const materials = await gateMaterials(platform, taskId, 'code', ['ar-split'], {}, [
+  const materials = await gateMaterials(platform, taskId, 'execute', ['ar-split'], {}, [
     { path: 'process/clarify-ir-sr-ar.md', label: '三级分解（拆分输入）' },
     { path: 'delivery/spec.md', label: '规格 spec（拆分输入）' },
   ])
@@ -569,31 +611,27 @@ async function parentCodeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       .map((it, i) => `${i + 1}. ${it.title}${it.acceptance ? `（验收：${it.acceptance}）` : ''}`)
       .join('\n')}`,
     digest: `AR 并行拆分：${items.length} 个子任务，开发轮转承接（调度器并发槽内并行）`,
-    preface: '评审门已放行。执行段按原子需求并行：每个 AR 一个子任务（拷贝父任务设计产物，从编码阶段起跑），各自走 编码→验证→MR→合入。',
+    preface: '评审门已放行。执行段按原子需求并行：每个 AR 一个子任务（拷贝父任务设计产物，从执行段编码小节起跑），各自走 编码→验证→MR→合入。',
     context: '子任务全部合入后举聚合验收门（TSE 拍板）收口父任务；任一子任务失败会升级通知责任人。并行度受调度器并发槽约束。',
     materials,
     options: [
       { action: 'approve', label: `确认拆分，派发 ${items.length} 个子任务`, tone: 'primary' },
       { action: 'rollback', rollbackTarget: 'design', label: '打回功能设计', tone: 'danger' },
-      { action: 'rollback', rollbackTarget: 'clarify', label: '打回需求澄清', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'requirement', label: '打回需求', tone: 'danger' },
     ],
     soleDecider: state.people.owner,
   })
   return 'wait'
 }
 
-// ==================== ⑤ 写代码（场景5） ====================
-
-async function codeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+/** 执行段 · 编码小节（写/修双模式；自报完成以文件证据裁决，通过后进验证小节） */
+async function executeCodePart(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
 
-  // AR 并行父任务：执行段走「拆分门 → 子任务并行 → 聚合验收门」而非直接编码
-  if (state.arParallel && !state.parentTaskId) return parentCodeWorker(ctx)
-
   const fresh = await platform.store.load(taskId)
 
-  const knowledge = await platform.injectKnowledge(taskId, 'code')
+  const knowledge = await platform.injectKnowledge(taskId, 'execute')
   const directives = await consumeInstructions(platform, taskId)
   const res = await runEngine(platform, fresh, 'code', {
     purpose: directives.length > 0 ? '修复模式：按指令改写代码' : '写模式：按 spec/design 实现',
@@ -614,7 +652,7 @@ async function codeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   }
   if (res.failed || output.done !== true) {
     if (ctx.attempts < 2) return 'continue' // 会话失败重试（预算内）
-    return failTask(platform, taskId, `编码阶段未能完成（自报未完成/引擎失败）：${res.failureSummary ?? '连续试错'}`)
+    return failTask(platform, taskId, `编码小节未能完成（自报未完成/引擎失败）：${res.failureSummary ?? '连续试错'}`)
   }
 
   // 自报完成以文件证据裁决（不只信自报）
@@ -632,35 +670,44 @@ async function codeWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   }
 
   await platform.syncArtifacts(taskId)
-  return advanceStage(platform, taskId, 'verify')
+  await saveExecutePhase(platform, taskId, 'verify') // 段内检查点：编码过 → 验证小节
+  return 'continue'
 }
 
-// ==================== ⑥ 构建验证（场景6） ====================
+/** 执行段 · 验证小节：测试门决策分支（通过→交付小节；驳回→段内修复/回退测试设计） */
+async function verifyGateBranch(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { platform, state } = ctx
+  const taskId = state.taskId
+  const gate = state.gate
+  if (gate && gate.status === 'raised') return 'wait'
+  const decision = gate?.decision
+  if (decision?.action === 'approve') {
+    // 决策已消化：清已决门（编码→验证→交付是段内小节不是阶段边界，没有 applyAdvance 帮忙清门，
+    // 必须显式清——否则 executeMainWorker 的门分派会无限回到本分支）
+    await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'digest-test-gate' } }, (s) => {
+      if (s.gate?.gateId === gate?.gateId) s.gate = null
+    })
+    await saveExecutePhase(platform, taskId, 'deliver') // 段内检查点：验证过 → 交付小节
+    return 'continue'
+  }
+  if (decision?.action === 'rollback') {
+    return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'execute', `测试门驳回：${decision.reason ?? ''}`)
+  }
+  return 'wait'
+}
 
 interface VerifyStateFile {
   round: number
   dims: { dimension: string; dispatchId: string; verdict: 'PASS' | 'WARN' | 'FAIL'; findings: string[] }[]
 }
 
-async function verifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+/** 执行段 · 验证小节（多维并行评审 + Critic 终审 + 构建 + 测试 → 举测试门） */
+async function executeVerifyPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
   const pb = platform.playbooks.get(state.playbookId)
   const log = platform.store.eventLog(taskId)
   const flowDir = platform.store.flowDir(taskId)
-
-  const gate = state.gate
-  if (gate && gate.kind === 'test') {
-    if (gate.status === 'raised') return 'wait'
-    const decision = gate.decision
-    if (decision?.action === 'approve') {
-      return advanceStage(platform, taskId, 'deliver')
-    }
-    if (decision?.action === 'rollback') {
-      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'code', `测试门驳回：${decision.reason ?? ''}`)
-    }
-    return 'wait'
-  }
 
   const vs: VerifyStateFile = (await readJson<VerifyStateFile>(path.join(flowDir, 'verify-state.json'))) ?? { round: 0, dims: [] }
   const directives = await consumeInstructions(platform, taskId)
@@ -670,7 +717,7 @@ async function verifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
   // 注：各维分派/报告独立（事件流与文件可观测"并行"），执行串行化以保证 stage-output 单写者无竞态。
   const dimsToRun = reentry ? vs.dims.filter((d) => d.verdict === 'FAIL').map((d) => d.dimension) : pb.customizable.reviewDimensions
   if (dimsToRun.length > 0) {
-    await log.append(taskId, 'verify', { type: 'system' }, 'assistant_message', {
+    await log.append(taskId, 'execute', { type: 'system' }, 'assistant_message', {
       text: `多维并行评审：${dimsToRun.join(' / ')} 各维独立判定${reentry ? '（回请原维度复检）' : ''}。`,
     })
     const results: { dimension: string; dispatchId: string; r: Awaited<ReturnType<typeof runEngine>> }[] = []
@@ -724,7 +771,7 @@ async function verifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     return rollbackStage(
       platform,
       taskId,
-      'code',
+      'execute',
       `验证不通过（${failed.map((f) => f.dimension).join('、')}）`,
       failed.flatMap((f) => f.findings).slice(0, 8),
     )
@@ -768,7 +815,7 @@ async function verifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
 
   // ---- 测试门（测试是否真跑、是否通过——证据同屏，读阶段注册表单源按轮次渲染路径） ----
   await platform.syncArtifacts(taskId) // 评审报告/构建日志/测试报告落索引 + artifact_written 留痕
-  const materials = await gateMaterials(platform, taskId, 'verify', ['build', 'test'], { round: vs.round })
+  const materials = await gateMaterials(platform, taskId, 'execute', ['build', 'test'], { round: vs.round })
   const dimReports = vs.dims.map((d) => `- ${d.dimension}：${d.verdict}`).join('\n')
   materials.push({ ref: 'dims', label: '维度评审结论', kind: 'report', content: dimReports })
 
@@ -781,7 +828,7 @@ async function verifyWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     materials,
     options: [
       { action: 'approve', label: '认可，进入交付合入', tone: 'primary' },
-      { action: 'rollback', rollbackTarget: 'code', label: '不认可：回退编码修复', tone: 'danger' },
+      { action: 'rollback', rollbackTarget: 'execute', label: '不认可：回退编码修复', tone: 'danger' },
       { action: 'rollback', rollbackTarget: 'test-design', label: '回退测试设计', tone: 'danger' },
     ],
     soleDecider: state.people.owner,
@@ -815,46 +862,53 @@ export async function saveDeliveryState(platform: Platform, taskId: string, ds: 
   await writeJson(path.join(platform.store.flowDir(taskId), 'delivery-state.json'), ds)
 }
 
-async function deliverWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
+/** 执行段 · 交付小节：交付门决策分支（合入=永远人工；就绪条件已在 decide 时 fail-closed 复核） */
+async function deliverMergeBranch(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { platform, state } = ctx
+  const taskId = state.taskId
+  const gate = state.gate
+  if (gate && gate.status === 'raised') return waitAsWatching(platform, taskId)
+  if (gate?.decision?.action === 'merge') {
+    return doMerge(platform, taskId)
+  }
+  return waitAsWatching(platform, taskId)
+}
+
+/** 执行段 · 交付小节：MR 反馈决策门（fact）决策后消化 */
+async function deliverFeedbackGateBranch(ctx: WorkerCtx): Promise<WorkerOutcome> {
+  const { platform, state } = ctx
+  const taskId = state.taskId
+  const gate = state.gate
+  if (!gate) return waitAsWatching(platform, taskId)
+  if (gate.status === 'raised') return waitAsWatching(platform, taskId)
+  const decision = gate.decision
+  const ds = await loadDeliveryState(platform, taskId)
+  if (decision?.action === 'rollback') {
+    for (const f of ds.feedback) if (f.status === 'gate-raised') f.status = 'queued-fix'
+    await saveDeliveryState(platform, taskId, ds)
+    return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'execute', `MR 反馈需人决策：${decision.reason ?? ''}`)
+  }
+  if (decision && (decision.action === 'approve' || decision.action === 'answer')) {
+    for (const f of ds.feedback) if (f.status === 'gate-raised') f.status = 'waived'
+    await saveDeliveryState(platform, taskId, ds)
+    await platform.store.eventLog(taskId).append(taskId, 'execute', { type: 'human', userId: decision.decidedBy, name: decision.decidedByName }, 'assistant_message', {
+      text: `反馈 waived（不采纳，留痕）：${decision.reason ?? decision.answer ?? ''}`,
+    })
+    // 决策已消化：清除已决门（否则 watcher 的就绪检测被 decided 门卡住，交付门永不举起）
+    await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'digest-feedback-gate' } }, (s) => {
+      if (s.gate?.gateId === gate.gateId) s.gate = null
+    })
+    return waitAsWatching(platform, taskId)
+  }
+  // 超时降级（decision=null）：门保留展示待追认；反馈未消化 → 就绪 fail-closed（不举交付门，铁门不代答）
+  return waitAsWatching(platform, taskId)
+}
+
+/** 执行段 · 交付小节（MR 材料 → 一仓一 MR → 监听态；再交付=修复后重推新 SHA） */
+async function executeDeliverPart(ctx: WorkerCtx): Promise<WorkerOutcome> {
   const { platform, state } = ctx
   const taskId = state.taskId
   const fresh = await platform.store.load(taskId)
-  const gate = fresh.gate
-
-  // 交付门：合入（永远人工；就绪条件已在 decide 时 fail-closed 复核）
-  if (gate && gate.kind === 'delivery') {
-    if (gate.status === 'raised') return waitAsWatching(platform, taskId)
-    if (gate.decision?.action === 'merge') {
-      return doMerge(platform, taskId)
-    }
-    return waitAsWatching(platform, taskId)
-  }
-
-  // 需人决策反馈门（fact）：决策后消化
-  if (gate && gate.kind === 'fact') {
-    if (gate.status === 'raised') return waitAsWatching(platform, taskId)
-    const decision = gate.decision
-    const ds = await loadDeliveryState(platform, taskId)
-    if (decision?.action === 'rollback') {
-      for (const f of ds.feedback) if (f.status === 'gate-raised') f.status = 'queued-fix'
-      await saveDeliveryState(platform, taskId, ds)
-      return rollbackStage(platform, taskId, decision.rollbackTarget ?? 'code', `MR 反馈需人决策：${decision.reason ?? ''}`)
-    }
-    if (decision && (decision.action === 'approve' || decision.action === 'answer')) {
-      for (const f of ds.feedback) if (f.status === 'gate-raised') f.status = 'waived'
-      await saveDeliveryState(platform, taskId, ds)
-      await platform.store.eventLog(taskId).append(taskId, 'deliver', { type: 'human', userId: decision.decidedBy, name: decision.decidedByName }, 'assistant_message', {
-        text: `反馈 waived（不采纳，留痕）：${decision.reason ?? decision.answer ?? ''}`,
-      })
-      // 决策已消化：清除已决门（否则 watcher 的就绪检测被 decided 门卡住，交付门永不举起）
-      await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'digest-feedback-gate' } }, (s) => {
-        if (s.gate?.gateId === gate.gateId) s.gate = null
-      })
-      return waitAsWatching(platform, taskId)
-    }
-    // 超时降级（decision=null）：门保留展示待追认；反馈未消化 → 就绪 fail-closed（不举交付门，铁门不代答）
-    return waitAsWatching(platform, taskId)
-  }
 
   const ddir = deliveryDirOf(platform.store.taskDir(taskId))
 
@@ -884,7 +938,7 @@ async function deliverWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
       s.mr = { mrId: mr.mrId, url: `mock-codehub:///${mr.mrId}`, branch, sha, repo: fresh.repo, title: mr.title }
       s.status = 'watching'
     })
-    await platform.store.eventLog(taskId).append(taskId, 'deliver', { type: 'system' }, 'assistant_message', {
+    await platform.store.eventLog(taskId).append(taskId, 'execute', { type: 'system' }, 'assistant_message', {
       text: `MR ${mr.mrId} 已创建（一仓一 MR）：进入监听态（非终态）。合入条件：反馈全消化 + 远端流水线真绿 + 合入方拍板。`,
     })
     await platform.notifications.notify({
@@ -916,7 +970,7 @@ async function deliverWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
     if (s.mr) s.mr.sha = sha
     s.status = 'watching'
   })
-  await platform.store.eventLog(taskId).append(taskId, 'deliver', { type: 'system' }, 'assistant_message', {
+  await platform.store.eventLog(taskId).append(taskId, 'execute', { type: 'system' }, 'assistant_message', {
     text: `修复已推送：SHA ${sha.slice(0, 8)}。旧 SHA 证据已失效（SHA 校验），等待远端流水线重跑。`,
   })
   return 'wait'
@@ -924,7 +978,7 @@ async function deliverWorker(ctx: WorkerCtx): Promise<WorkerOutcome> {
 
 async function waitAsWatching(platform: Platform, taskId: string): Promise<WorkerOutcome> {
   await platform.store.mutate(taskId, { expectedVersion: null }, (s) => {
-    if (s.stage === 'deliver') s.status = 'watching'
+    if (s.stage === 'execute') s.status = 'watching'
   })
   return 'wait'
 }
@@ -934,13 +988,13 @@ async function doMerge(platform: Platform, taskId: string): Promise<WorkerOutcom
   if (!st.mr) return 'stop'
   await platform.mrPlatform.merge(st.mr.mrId)
   await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'merge' } }, (s) => {
-    applyAdvance(s, 'merged') // deliver → merged：完成集收口 + 清门
+    applyAdvance(s, 'merged') // execute → merged：完成集收口 + 清门
     s.status = 'merged'
   })
-  await platform.store.eventLog(taskId).append(taskId, 'deliver', { type: 'system' }, 'stage_exited', {
-    stage: 'deliver',
+  await platform.store.eventLog(taskId).append(taskId, 'execute', { type: 'system' }, 'stage_exited', {
+    stage: 'execute',
     reason: 'completed',
-    round: st.stageRounds['deliver'] ?? 1,
+    round: st.stageRounds['execute'] ?? 1,
   })
   await platform.notifications.notify({
     taskId,
@@ -981,6 +1035,8 @@ async function advanceStage(platform: Platform, taskId: string, to: StageId): Pr
   const { state } = await platform.store.mutate(taskId, { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: `advance:${to}` } }, (s) => {
     applyAdvance(s, to)
   })
+  // 进入执行段：清段内检查点（防御旧残留；正常路径无检查点文件）
+  if (to === 'execute') await clearExecutePhase(platform, taskId)
   await log.append(taskId, from, { type: 'system' }, 'stage_exited', {
     stage: from,
     reason: 'completed',
@@ -1019,6 +1075,9 @@ async function rollbackStage(platform: Platform, taskId: string, target: StageId
     reentry: true,
     round: state.stageRounds[state.stage] ?? 1,
   })
+  // 段内检查点归位：回退进执行段 → 回到编码小节（修复模式）；回退出执行段 → 清检查点
+  if (target === 'execute') await saveExecutePhase(platform, taskId, 'code')
+  else await clearExecutePhase(platform, taskId)
   platform.bus.emit({ type: 'stage', taskId, state })
   return 'continue'
 }

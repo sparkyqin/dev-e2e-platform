@@ -31,7 +31,7 @@ describe('产物三分区', () => {
   it('write/read 往返 + 元信息', async () => {
     const ws = await tmpWs()
     const am = new ArtifactManager(ws)
-    const meta = await am.write('process/baseline.md', '# 基线', 'intake', 'ai')
+    const meta = await am.write('process/baseline.md', '# 基线', 'requirement', 'ai')
     expect(meta.partition).toBe('process')
     expect(meta.bytes).toBeGreaterThan(0)
     expect(await am.read('process/baseline.md')).toBe('# 基线')

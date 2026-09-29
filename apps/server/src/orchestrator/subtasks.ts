@@ -9,8 +9,8 @@ import type { Platform } from './platform.js'
 /**
  * AR 级并行（研发作业流 · 执行段拆分）
  *
- * 父任务 review 通过后：owner 拍板「AR 拆分门」→ 按原子需求 spawn 子任务并行执行
- * （复用调度器并发槽；子任务拷贝父任务设计产物，从 code 阶段起跑）→
+ * 父任务评审门通过后：owner 拍板「AR 拆分门」→ 按原子需求 spawn 子任务并行执行
+ * （复用调度器并发槽；子任务拷贝父任务设计产物，从 execute 段编码小节起跑）→
  * 父任务转 aggregating（不占槽）→ 子任务各自走 编码→验证→MR→合入 →
  * watcher（tick 扫 + doMerge 钩子）观察全 merged → 举聚合验收门（TSE 拍板）→ 父任务收口 merged。
  *
@@ -87,31 +87,31 @@ export async function spawnSubtasks(platform: Platform, parent: TaskState, items
       if (await fs.stat(src).catch(() => null)) await fs.copyFile(src, path.join(childDir, 'process', rel))
     }
 
-    // 物化到执行段：阶段=code、完成集=设计段全过，原子化入队（与调度器无竞态）
+    // 物化到执行段：阶段=execute、完成集=设计段全过，原子化入队（与调度器无竞态）
     await platform.store.mutate(
       child.taskId,
       { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'spawn-subtask' } },
       (s) => {
         s.parentTaskId = parent.taskId
         s.arTitle = it.title
-        s.stage = 'code'
-        s.currentStepIndex = 7
-        s.completedStages = ['intake', 'clarify', 'architecture', 'design', 'test-design', 'review']
-        s.stageRounds = { intake: 1, clarify: 1, architecture: 1, design: 1, 'test-design': 1, review: 1, code: 1 }
+        s.stage = 'execute'
+        s.currentStepIndex = 5
+        s.completedStages = ['requirement', 'architecture', 'design', 'test-design']
+        s.stageRounds = { requirement: 1, architecture: 1, design: 1, 'test-design': 1, execute: 1 }
         s.pendingInstructions.push(
           `本任务是父任务 #${parent.seq}「${parent.title}」的 AR 拆分子任务（AR${i + 1}/${items.length}，责任人 ${personOf(ownerId).name}）。` +
-            `实现范围=「${it.title}」；架构/功能/测试设计产物已拷贝至本任务交付区，按设计实现（含 UT）；MST 由验证段统一执行。`,
+            `实现范围=「${it.title}」；架构/功能/测试设计产物已拷贝至本任务交付区，按设计实现（含 UT）；MST 由验证小节统一执行。`,
         )
         s.status = 'queued'
       },
     )
-    // 阶段时间轴：子任务从编码起跑（设计段由父任务完成，子任务事件流不含设计段段段）
-    await platform.store.eventLog(child.taskId).append(child.taskId, 'code', { type: 'system' }, 'stage_entered', {
-      stage: 'code',
+    // 阶段时间轴：子任务从执行段起跑（设计段由父任务完成，子任务事件流不含设计段段段）
+    await platform.store.eventLog(child.taskId).append(child.taskId, 'execute', { type: 'system' }, 'stage_entered', {
+      stage: 'execute',
       reentry: false,
       round: 1,
     })
-    await platform.store.eventLog(child.taskId).append(child.taskId, 'code', { type: 'system' }, 'subtask_spawned', {
+    await platform.store.eventLog(child.taskId).append(child.taskId, 'execute', { type: 'system' }, 'subtask_spawned', {
       parentTaskId: parent.taskId,
       subtaskTaskId: child.taskId,
       arTitle: it.title,
@@ -140,7 +140,7 @@ export async function spawnSubtasks(platform: Platform, parent: TaskState, items
   )
   const plog = platform.store.eventLog(parent.taskId)
   for (let i = 0; i < children.length; i++) {
-    await plog.append(parent.taskId, 'code', { type: 'system' }, 'subtask_spawned', {
+    await plog.append(parent.taskId, 'execute', { type: 'system' }, 'subtask_spawned', {
       parentTaskId: parent.taskId,
       subtaskTaskId: children[i].taskId,
       arTitle: items[i].title,
@@ -149,7 +149,7 @@ export async function spawnSubtasks(platform: Platform, parent: TaskState, items
       ownerName: personOf(AR_DEV_POOL[i % AR_DEV_POOL.length]).name,
     })
   }
-  await plog.append(parent.taskId, 'code', { type: 'system' }, 'assistant_message', {
+  await plog.append(parent.taskId, 'execute', { type: 'system' }, 'assistant_message', {
     text: `AR 拆分已派发：${children.length} 个子任务并行执行（${children.map((c, i) => `AR${i + 1}→${personOf(AR_DEV_POOL[i % AR_DEV_POOL.length]).name}`).join('、')}）。父任务转入聚合等待（不占并发槽），全 部合入后举聚合验收门（TSE 拍板）。`,
   })
   await platform.kick()
@@ -186,7 +186,7 @@ async function checkParentAggregationUnsafe(platform: Platform, parentTaskId: st
     if (ref.status !== status) changed = true
     if (status === 'merged' || status === 'archived') {
       if (ref.status !== 'merged' && ref.status !== 'archived') {
-        await log.append(parentTaskId, 'code', { type: 'system' }, 'subtask_completed', {
+        await log.append(parentTaskId, 'execute', { type: 'system' }, 'subtask_completed', {
           parentTaskId,
           subtaskTaskId: ref.taskId,
           arTitle: ref.arTitle,
@@ -241,7 +241,7 @@ async function checkParentAggregationUnsafe(platform: Platform, parentTaskId: st
       })),
       options: [
         { action: 'approve', label: '验收通过，父任务收口', tone: 'primary' },
-        { action: 'rollback', rollbackTarget: 'code', label: '不通过：清空拆分重新派发', tone: 'danger' },
+        { action: 'rollback', rollbackTarget: 'execute', label: '不通过：清空拆分重新派发', tone: 'danger' },
       ],
       soleDecider: decider,
     })
@@ -255,26 +255,19 @@ export async function closeParentMerged(platform: Platform, taskId: string): Pro
     taskId,
     { expectedVersion: null, audit: { actor: 'platform', actorName: '平台', action: 'merge' } },
     (s) => {
-      for (const sg of ['code', 'verify', 'deliver'] as const) {
-        if (!s.completedStages.includes(sg)) s.completedStages.push(sg)
-      }
+      if (!s.completedStages.includes('execute')) s.completedStages.push('execute')
       s.stage = 'merged'
-      s.currentStepIndex = 10
+      s.currentStepIndex = 6
       s.stageRounds.merged = 1
       s.gate = null
       s.status = 'merged'
     },
   )
   const log = platform.store.eventLog(taskId)
-  await log.append(taskId, 'code', { type: 'system' }, 'stage_exited', {
-    stage: 'code',
+  await log.append(taskId, 'execute', { type: 'system' }, 'stage_exited', {
+    stage: 'execute',
     reason: 'completed',
-    round: st.stageRounds['code'] ?? 1,
-  })
-  await log.append(taskId, 'deliver', { type: 'system' }, 'stage_exited', {
-    stage: 'deliver',
-    reason: 'completed',
-    round: 1,
+    round: st.stageRounds['execute'] ?? 1,
   })
   await log.append(taskId, 'merged', { type: 'system' }, 'assistant_message', {
     text: `AR 聚合验收通过：${st.subtasks?.length ?? 0} 个子任务全部合入，父任务收口（父交付=架构/功能/测试设计产物集 + AR 谱系；代码交付见各子任务 MR）。`,

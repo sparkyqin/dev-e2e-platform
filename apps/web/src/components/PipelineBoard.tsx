@@ -121,7 +121,7 @@ export function PipelineStrip({
             key={sid}
             className={`pipe-chip ${st} ${state.status === 'failed' && st === 'current' ? 'failed' : ''}`}
             onClick={() => onOpenBoard(sid)}
-            title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}\n产物 ${arts.length} 个${gateHint}\n点击到看板查看产物卡与门足迹`}
+            title={`${meta.label}：${meta.desc}\n退出条件：${meta.exitCondition}\n本段知识：${meta.skills?.map((sk) => sk.label).join('、') ?? '—'}\n产物 ${arts.length} 个${gateHint}\n点击到看板查看产物卡与门足迹`}
             role="listitem"
           >
             <span className={`pipe-dot ${st === 'current' && state.status === 'running' ? 'running' : ''}`} />
@@ -190,6 +190,14 @@ export default function PipelineBoard({
               {trace?.rolledBack && <span className="pipe-rollback" title="曾被声明式回退到本阶段">↩</span>}
               {arts.length > 0 && <span className="pipe-count" title={`${arts.length} 个产物`}>{arts.length}</span>}
             </header>
+            {meta.skills && meta.skills.length > 0 && (
+              <div className="pipe-skills" title={meta.skills.map((sk) => `${sk.label}——${sk.desc}`).join('\n')}>
+                <span className="pipe-skills-k">知识</span>
+                {meta.skills.map((sk) => (
+                  <span key={sk.id} className="pipe-skill-tag">{sk.label}</span>
+                ))}
+              </div>
+            )}
             <div className="pipe-body">
               {st === 'current' && <CurrentStatusLine state={state} />}
               {(moreOpen.has(sid) ? arts : arts.slice(0, 3)).map((a) => (

@@ -91,8 +91,8 @@ describe('E2E：需求→合入（clean 剧本 · fast playbook）', () => {
     // seq 单调递增（append-only）
     const seqs = events.map((e) => e.seq)
     expect([...seqs].sort((a, b) => a - b)).toEqual(seqs)
-    // 每个阶段都有 stage_entered
-    for (const stage of ['intake', 'clarify', 'architecture', 'design', 'test-design', 'review', 'code', 'verify', 'deliver']) {
+    // 每个阶段都有 stage_entered（v2 六段：requirement 含基线+分解两个段内作业）
+    for (const stage of ['requirement', 'architecture', 'design', 'test-design', 'execute']) {
       expect(events.some((e) => e.kind === 'stage_entered' && (e.payload as { stage: string }).stage === stage)).toBe(true)
     }
   })
@@ -118,14 +118,14 @@ describe('E2E：需求→合入（clean 剧本 · fast playbook）', () => {
 
     // 关键产物确实被声明过（防全豁免导致的假绿）
     const w = (stage: string, p: string): boolean => written.some((e) => e.stage === stage && (e.payload as { path: string }).path === p)
-    expect(w('intake', 'process/baseline.md'), 'intake 应产出基线').toBe(true)
-    expect(w('clarify', 'process/decisions.json'), 'clarify 应产出决策记录').toBe(true)
+    expect(w('requirement', 'process/baseline.md'), 'requirement 应产出基线（intake 作业）').toBe(true)
+    expect(w('requirement', 'process/decisions.json'), 'requirement 应产出决策记录（clarify 作业）').toBe(true)
     expect(w('architecture', 'delivery/architecture.md'), 'architecture 应产出架构 SPEC').toBe(true)
     expect(w('design', 'delivery/contract/api-contract.json'), 'design 应产出契约单源').toBe(true)
-    expect(w('verify', 'process/test-r1.md'), 'verify 应产出测试报告').toBe(true)
+    expect(w('execute', 'process/test-r1.md'), 'execute 应产出测试报告（验证小节）').toBe(true)
     expect(
-      written.some((e) => e.stage === 'code' && (e.payload as { path: string }).path.startsWith('delivery/src/')),
-      'code 应产出实现代码',
+      written.some((e) => e.stage === 'execute' && (e.payload as { path: string }).path.startsWith('delivery/src/')),
+      'execute 应产出实现代码（编码小节）',
     ).toBe(true)
   })
 
@@ -165,7 +165,7 @@ describe('E2E：需求→合入（clean 剧本 · fast playbook）', () => {
 })
 
 describe('E2E：strict 剧本回退环（多维评审 FAIL → 声明式回退 → 复检 → 合入）', () => {
-  it('测试充分性首轮 FAIL 触发 verify→code 回退，修复轮复检通过后合入', async () => {
+  it('测试充分性首轮 FAIL 触发 execute 段内修复环，修复轮复检通过后合入', async () => {
     const st = await createDemoTask(platform, { playbookId: 'strict', scenario: 'clean' })
     const taskId = st.taskId
 
@@ -175,17 +175,17 @@ describe('E2E：strict 剧本回退环（多维评审 FAIL → 声明式回退 �
     await waitForGate(platform, taskId, 'review')
     await decide(platform, taskId, 'zhaolei', 'approve')
 
-    // 首轮多维评审：测试充分性 FAIL（边界未覆盖）→ 回退 code（修复模式）
+    // 首轮多维评审：测试充分性 FAIL（边界未覆盖）→ execute 段内回退（编码小节修复模式）
     const rolledBack = await waitFor(
       async () => {
         const s = await stateOf(platform, taskId)
-        return s.repairRounds >= 1 && s.stage === 'code' ? s : null
+        return s.repairRounds >= 1 && s.stage === 'execute' ? s : null
       },
-      { timeoutMs: 60_000, what: 'verify→code 声明式回退' },
+      { timeoutMs: 60_000, what: 'execute 段内声明式回退（修复模式）' },
     )
     expect(rolledBack.repairRounds).toBeGreaterThanOrEqual(1)
     // 修复指令已注入（持久证据：engine-runner 把 fixDirectives 记为 user_message 事件；
-    // live pendingInstructions 会被 codeWorker 在毫秒级内消费，不可断言）
+    // live pendingInstructions 会被编码小节在毫秒级内消费，不可断言）
     await waitFor(
       async () => {
         const msgs = await platform.store.eventLog(taskId).read({ kinds: ['user_message'] })
@@ -204,8 +204,8 @@ describe('E2E：strict 剧本回退环（多维评审 FAIL → 声明式回退 �
       { what: '回退事件留痕' },
     )
     expect(rollbacks.length).toBe(1)
-    expect((rollbacks[0].payload as { from: string; to: string }).from).toBe('verify')
-    expect((rollbacks[0].payload as { from: string; to: string }).to).toBe('code')
+    expect((rollbacks[0].payload as { from: string; to: string }).from).toBe('execute')
+    expect((rollbacks[0].payload as { from: string; to: string }).to).toBe('execute')
 
     // 修复轮：code 完成后复检（仅失败维度回请原维度）→ test 门
     await waitForGate(platform, taskId, 'test', 90_000)

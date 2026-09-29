@@ -45,15 +45,15 @@ describe('E2E：AR 并行（父拆分 → 子任务并行执行 → 聚合验收
       return s.status === 'aggregating' && (s.subtasks?.length ?? 0) > 0 ? s : null
     }, { what: '父任务 aggregating + 子任务清单', timeoutMs: 30_000 })
     expect(parent.subtasks).toHaveLength(3)
-    expect(parent.stage).toBe('code')
+    expect(parent.stage).toBe('execute')
 
-    // 子任务：拷贝了父任务设计产物，从 code 阶段起跑（断言时可能已并行推进到 verify/deliver）
+    // 子任务：拷贝了父任务设计产物，从 execute 段编码小节起跑（设计段完成集已注入）
     const subIds = parent.subtasks!.map((s) => s.taskId)
     for (const subId of subIds) {
       const sub = await stateOf(platform, subId)
       expect(sub.parentTaskId).toBe(taskId)
-      expect(['code', 'verify', 'deliver']).toContain(sub.stage)
-      expect(sub.completedStages).toContain('review')
+      expect(sub.stage).toBe('execute')
+      expect(sub.completedStages).toContain('test-design')
       const { ArtifactManager } = await import('../src/extension/artifacts.js')
       const am = new ArtifactManager(platform.store.taskDir(subId))
       expect(await am.read('delivery/architecture.md')).toBeTruthy() // 父任务架构 SPEC 已拷贝
@@ -80,17 +80,17 @@ describe('E2E：AR 并行（父拆分 → 子任务并行执行 → 聚合验收
     // 父任务收口
     const merged = await waitForStatus(platform, taskId, 'merged', 30_000)
     expect(merged.stage).toBe('merged')
-    expect(merged.completedStages).toContain('deliver')
+    expect(merged.completedStages).toContain('execute')
 
     // 事件流可回溯：spawn ×3 + completed ×3
     const events = await platform.store.eventLog(taskId).read()
     expect(events.filter((e) => e.kind === 'subtask_spawned')).toHaveLength(3)
     expect(events.filter((e) => e.kind === 'subtask_completed')).toHaveLength(3)
 
-    // 子任务度量：code/verify/deliver 阶段计时有归属（stage_entered(code) 在 spawn 时补发）
+    // 子任务度量：execute 段计时有归属（stage_entered(execute) 在 spawn 时补发）
     for (const subId of subIds) {
       const subEvents = await platform.store.eventLog(subId).read()
-      expect(subEvents.some((e) => e.kind === 'stage_entered' && (e.payload as { stage?: string }).stage === 'code')).toBe(true)
+      expect(subEvents.some((e) => e.kind === 'stage_entered' && (e.payload as { stage?: string }).stage === 'execute')).toBe(true)
     }
 
     // 子任务清单状态全部回写 merged

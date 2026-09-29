@@ -8,6 +8,7 @@
  * - AR 子任务 / AR 谱系 / 待追认：按需出现
  */
 import type { TaskDetail, TaskState } from '@ai-platform/shared'
+import { STAGES } from '@ai-platform/shared'
 import { api } from '../api'
 import { useApp } from '../store'
 import { HEALTH_META, SCENARIO_LABEL, STATUS_META, fmtTime, stageLabel } from '../format'
@@ -97,6 +98,15 @@ export default function TaskRail({
               <dt>阶段轮次</dt>
               <dd>
                 {stageLabel(state.stage)} 第 {state.stageRounds[state.stage] ?? 1} 轮 · 修复 {state.repairRounds} 轮
+              </dd>
+            </div>
+            <div>
+              <dt>本段知识</dt>
+              <dd className="rail-skills">
+                {(STAGES[state.stage]?.skills ?? []).map((sk) => (
+                  <span key={sk.id} className="rail-skill" title={sk.desc}>{sk.label}</span>
+                ))}
+                {(STAGES[state.stage]?.skills ?? []).length === 0 && <span className="dim">—</span>}
               </dd>
             </div>
             <div>

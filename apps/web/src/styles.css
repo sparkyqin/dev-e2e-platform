@@ -877,6 +877,18 @@ a { color: var(--brand); text-decoration: none; }
   padding: 0 6px; font-weight: 700; flex-shrink: 0;
 }
 .pipe-body { flex: 1; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+.pipe-skills { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; padding: 0 1px 1px; min-width: 0; }
+.pipe-skills-k { font-size: 9px; color: var(--ink-3); flex-shrink: 0; letter-spacing: 0.5px; }
+.pipe-skill-tag {
+  font-size: 9.5px; color: #1f6f54; background: #e7f3ed; border: 1px solid #cfe6da; border-radius: 4px;
+  padding: 0 4px; white-space: nowrap; cursor: help;
+}
+.pipe-col.current .pipe-skill-tag { background: #e3ecfd; border-color: #c6d4f4; color: #3a52c4; }
+.rail-skills { display: flex; gap: 4px; flex-wrap: wrap; }
+.rail-skill {
+  font-size: 10.5px; color: #1f6f54; background: #e7f3ed; border: 1px solid #cfe6da; border-radius: 4px;
+  padding: 1px 5px; cursor: help; white-space: nowrap;
+}
 .pipe-empty { color: var(--ink-3); font-size: 10.5px; text-align: center; padding: 8px 0; }
 .pipe-card {
   display: flex; align-items: center; gap: 5px; text-align: left; cursor: pointer;

@@ -3,12 +3,13 @@ import type { RollbackTarget, StageId, TaskState } from '@ai-platform/shared'
 import { TaskNotFoundError } from './task-store.js'
 
 /**
- * 9 阶段状态机（附录 A / L2 内核主干 · 研发作业流版）
+ * 六段状态机（附录 A / L2 内核主干 · 对齐愿景图：设计段 4 + 执行段 1 + 终态）
  *
  * 阶段顺序与退出条件平台兜底；支持：
  *  - 顺序推进 advance()
  *  - 声明式回退 rollbackTo()（驳回时直接指定退回到哪一步，而非从头重跑）
- *  - 回退环：verify→code（修复模式）、deliver→code（反馈）、merged→code（合入后问题）
+ *  - 回退环：execute→execute（验证/反馈修复模式）、merged→execute（合入后问题）
+ *  - execute 段内循环（编码→验证→交付）由 workers 以 .flow/execute-phase.json 检查点驱动，不是阶段边界
  */
 
 export class IllegalTransitionError extends Error {
@@ -20,30 +21,22 @@ export class IllegalTransitionError extends Error {
 
 /** 合法顺序边 */
 const FORWARD: Record<StageId, StageId | null> = {
-  intake: 'clarify',
-  clarify: 'architecture',
+  requirement: 'architecture',
   architecture: 'design',
   design: 'test-design',
-  'test-design': 'review',
-  review: 'code',
-  code: 'verify',
-  verify: 'deliver',
-  deliver: 'merged',
+  'test-design': 'execute',
+  execute: 'merged',
   merged: null,
 }
 
-/** 回退边（声明式回退 + 三条回退环） */
+/** 回退边（声明式回退 + 修复环；execute→execute 为段内修复模式，test-design→test-design 为评审驳回重做测试设计） */
 const ROLLBACK_EDGES: Record<StageId, StageId[]> = {
-  intake: [],
-  clarify: [],
-  architecture: ['clarify'],
-  design: ['clarify', 'architecture'],
-  'test-design': ['clarify', 'architecture', 'design'],
-  review: ['clarify', 'architecture', 'design', 'test-design'],
-  code: ['clarify', 'architecture', 'design'],
-  verify: ['code'],
-  deliver: ['code', 'verify'],
-  merged: ['code'],
+  requirement: [],
+  architecture: ['requirement'],
+  design: ['requirement', 'architecture'],
+  'test-design': ['requirement', 'architecture', 'design', 'test-design'],
+  execute: ['requirement', 'architecture', 'design', 'test-design', 'execute'],
+  merged: ['execute'],
 }
 
 export function stageIndex(stage: StageId): number {

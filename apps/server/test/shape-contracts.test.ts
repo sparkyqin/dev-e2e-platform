@@ -127,16 +127,12 @@ describe('阶段注册表单源（STAGES 声明列一致性）', () => {
     }
   })
 
-  it('关键门都有声明（十个 raiseGate 调用点的单源对齐）', () => {
-    expect(STAGES.clarify.exitGates.map((g) => g.kind)).toContain('fact')
-    expect(STAGES.architecture.exitGates.map((g) => g.kind)).toContain('fact')
-    expect(STAGES.design.exitGates.map((g) => g.kind)).toContain('fact')
-    expect(STAGES['test-design'].exitGates.map((g) => g.kind)).toContain('fact')
-    expect(STAGES.review.exitGates.map((g) => g.kind)).toContain('review')
-    expect(STAGES.code.exitGates.map((g) => g.kind)).toEqual(['fact', 'test']) // AR 拆分门 + 聚合验收门
-    expect(STAGES.verify.exitGates.map((g) => g.kind)).toEqual(['test'])
-    expect(STAGES.deliver.exitGates.map((g) => g.kind)).toEqual(['fact', 'delivery']) // 反馈决策门 + 交付门
-    expect(STAGES.intake.exitGates).toEqual([]) // 双层自动门
+  it('关键门都有声明（raiseGate 调用点的单源对齐）', () => {
+    expect(STAGES.requirement.exitGates.map((g) => g.kind)).toEqual(['fact']) // 业务事实门（基线双层自动校验是段内检查点，不是门）
+    expect(STAGES.architecture.exitGates.map((g) => g.kind)).toEqual(['fact'])
+    expect(STAGES.design.exitGates.map((g) => g.kind)).toEqual(['fact'])
+    expect(STAGES['test-design'].exitGates.map((g) => g.kind)).toEqual(['fact', 'review']) // 连拍双门：TSE + 评审（设计段收口）
+    expect(STAGES.execute.exitGates.map((g) => g.kind)).toEqual(['fact', 'test', 'test', 'fact', 'delivery']) // AR拆分 + 聚合验收 + 测试门 + MR反馈 + 交付
     expect(STAGES.merged.exitGates).toEqual([]) // 终态
   })
 
@@ -151,23 +147,23 @@ describe('阶段注册表单源（STAGES 声明列一致性）', () => {
   it('isDeclaredOutputPath：精确/占位/目录前缀三类匹配', () => {
     expect(isDeclaredOutputPath('design', 'delivery/spec.md')).toBe(true)
     expect(isDeclaredOutputPath('design', 'delivery/unknown.md')).toBe(false)
-    expect(isDeclaredOutputPath('verify', 'process/review/dim-测试充分性-r1.md')).toBe(true) // {dimension}/{round} 通配
-    expect(isDeclaredOutputPath('verify', 'process/review/dim-x-r99.md')).toBe(true)
-    expect(isDeclaredOutputPath('verify', 'process/review/dim-x-r1-extra.md')).toBe(false)
-    expect(isDeclaredOutputPath('code', 'delivery/src/services/a.js')).toBe(true) // 目录前缀
-    expect(isDeclaredOutputPath('code', 'delivery/src2/a.js')).toBe(false) // 前缀不误匹配
-    expect(isDeclaredOutputPath('review', 'process/review-report-r2.md')).toBe(true) // 平台落盘产物也声明
-    expect(isDeclaredOutputPath('intake', 'process/baseline.md')).toBe(true)
+    expect(isDeclaredOutputPath('execute', 'process/review/dim-测试充分性-r1.md')).toBe(true) // {dimension}/{round} 通配
+    expect(isDeclaredOutputPath('execute', 'process/review/dim-x-r99.md')).toBe(true)
+    expect(isDeclaredOutputPath('execute', 'process/review/dim-x-r1-extra.md')).toBe(false)
+    expect(isDeclaredOutputPath('execute', 'delivery/src/services/a.js')).toBe(true) // 目录前缀
+    expect(isDeclaredOutputPath('execute', 'delivery/src2/a.js')).toBe(false) // 前缀不误匹配
+    expect(isDeclaredOutputPath('test-design', 'process/review-report-r2.md')).toBe(true) // 平台落盘产物也声明
+    expect(isDeclaredOutputPath('requirement', 'process/baseline.md')).toBe(true)
   })
 
   it('证据面产物过滤：过程草稿/派生视图/动态清单不进证据同屏', () => {
     const designEvidence = stageEvidenceOutputs('design').map((o) => o.path)
     expect(designEvidence).toEqual(['delivery/spec.md', 'delivery/design.md', 'delivery/contract/api-contract.json'])
-    const verifyEvidence = stageEvidenceOutputs('verify', ['build', 'test']).map((o) => o.path)
+    const verifyEvidence = stageEvidenceOutputs('execute', ['build', 'test']).map((o) => o.path)
     expect(verifyEvidence).toEqual(['process/build-r{round}.log', 'process/test-r{round}.md'])
-    const allClarify = stageOutputs('clarify').map((o) => o.path)
-    expect(allClarify).toContain('process/clarify-ir-sr-ar.md') // 全量含草稿，证据面不含
-    expect(stageEvidenceOutputs('clarify').map((o) => o.path)).toEqual(['process/decisions.json'])
+    const allRequirement = stageOutputs('requirement').map((o) => o.path)
+    expect(allRequirement).toContain('process/clarify-ir-sr-ar.md') // 全量含草稿，证据面不含
+    expect(stageEvidenceOutputs('requirement').map((o) => o.path)).toEqual(['process/decisions.json'])
   })
 })
 
@@ -206,7 +202,7 @@ describe('阶段指令与注册表一致（stage-prompts 单源）', () => {
     expect(design).toContain('delivery/contract/api-contract.json')
     expect(design).toContain('接口契约单源')
 
-    const verify = instructionOf('verify', 'verify-review')
+    const verify = instructionOf('execute', 'verify-review')
     expect(verify).toContain('process/review/dim-测试充分性-r1.md')
     expect(verify).toContain('测试门')
   })

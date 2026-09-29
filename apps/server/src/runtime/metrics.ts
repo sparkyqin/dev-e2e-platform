@@ -8,7 +8,7 @@ import type {
   TaskMetrics,
   TaskState,
 } from '@ai-platform/shared'
-import { STAGE_ORDER } from '@ai-platform/shared'
+import { STAGE_ORDER, toCurrentStage } from '@ai-platform/shared'
 import type { Platform } from '../orchestrator/platform.js'
 
 /**
@@ -17,8 +17,10 @@ import type { Platform } from '../orchestrator/platform.js'
  * 只读派生：全部从语义事件流（append-only JSONL）与状态真源重算，不引入第二份真相。
  *  - 阶段活跃时长：stage_entered → stage_exited / rollback（回退重做累加，体现真实投入）
  *  - 门等待：gate_raised → gate_decided（降级也算真实等待）
- *  - TTM：createdAt → 末次 deliver 完成退出（仅已合入任务计入统计）
+ *  - TTM：createdAt → 末次交付完成退出（仅已合入任务计入统计）
  *  - 一次通过：零回退零修复轮直达合入；阶段一次通过 = 单轮进入完成（stage_entered.round 派生）
+ *  - v1 存量事件里的旧阶段 id（intake/clarify/review/code/verify/deliver）按 LEGACY_STAGE_ALIAS
+ *    归一到 v2 轨（requirement/test-design/execute）后入桶——历史时长不断档、口径可对比。
  */
 
 const ts = (e: SemanticEvent): number => Date.parse(e.ts)
@@ -75,20 +77,22 @@ export function computeTaskMetrics(state: TaskState, events: SemanticEvent[], no
     switch (e.kind) {
       case 'stage_entered': {
         // 每次进入开新段（回退重做的段由 rollback 事件已关闭前段）；round 记录该阶段第几轮进入
+        // 旧阶段 id 归一到 v2 轨再入桶（存量任务历史与新建任务同口径）
         closeSegment(ts(e))
-        curStage = p.stage as StageId
+        curStage = toCurrentStage(String(p.stage ?? ''))
         curStageAt = ts(e)
         const round = Number(p.round ?? 1)
         stageMaxRounds[curStage] = Math.max(stageMaxRounds[curStage] ?? 0, round)
         break
       }
       case 'stage_exited': {
-        if (curStage === (p.stage as StageId)) closeSegment(ts(e))
-        if (p.stage === 'deliver' && p.reason === 'completed') mergedAt = ts(e) // 末次合入（回退环后重合入取最新）
+        const exited = toCurrentStage(String(p.stage ?? ''))
+        if (curStage === exited) closeSegment(ts(e))
+        if (exited === 'execute' && p.reason === 'completed') mergedAt = ts(e) // 末次合入（回退环后重合入取最新）
         break
       }
       case 'rollback': {
-        if (curStage === (p.from as StageId)) closeSegment(ts(e))
+        if (curStage === toCurrentStage(String(p.from ?? ''))) closeSegment(ts(e))
         rollbacks += 1
         break
       }

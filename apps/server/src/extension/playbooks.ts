@@ -17,16 +17,12 @@ export const DEFAULT_PLAYBOOK: Playbook = {
   published: true,
   locked: {
     stages: [
-      { id: 'intake', io: '需求单 → 基线快照（过程区）', exitCondition: '基线双层自动校验（程序规则 + AI 复核）通过' },
-      { id: 'clarify', io: '基线 → 可验收原子项（IR→SR→AR）+ 决策记录', exitCondition: '原子项落成；事实门全决或降级标记待追认' },
+      { id: 'requirement', io: '需求单 → 基线快照（过程区）+ 可验收原子项（IR→SR→AR）+ 决策记录', exitCondition: '基线双层自动校验（程序规则 + AI 复核，段内检查点）通过；原子项落成；事实门全决或降级标记待追认' },
       { id: 'architecture', io: '原子项 → 架构设计 SPEC（架构分析/边界设计/业务流分析，交付区）', exitCondition: '架构师拍板架构方案通过；主权移交开发' },
       { id: 'design', io: '架构 → 功能设计 SPEC（实现设计/规格接口/功能 FMEA，交付区）+ 契约单源', exitCondition: '开发拍板方案通过；主权移交开发' },
-      { id: 'test-design', io: '功能设计 → 测试 SPEC（需求测试分析/测试策略/测试点设计，交付区）', exitCondition: 'TSE 拍板测试设计通过' },
-      { id: 'review', io: '方案证据 → 唯一拍板', exitCondition: '评审人通过放行 / 驳回附理由声明式回退' },
-      { id: 'code', io: '方案 → 代码变更（交付区 src）', exitCondition: 'AI 自报完成 + 平台文件存在校验通过' },
-      { id: 'verify', io: '代码 → 评审报告 + 构建/测试证据', exitCondition: '各维独立判定 + Critic 终审 + 编译测试通过' },
-      { id: 'deliver', io: '代码 → MR（监听态）→ 合入', exitCondition: '反馈全消化 + 流水线真绿 + 合入方拍板' },
-      { id: 'merged', io: '—', exitCondition: '终态；合入后发现问题可回退编码' },
+      { id: 'test-design', io: '功能设计 → 测试 SPEC（需求测试分析/策略/测试点设计，交付区）→ 评审报告', exitCondition: 'TSE 拍板测试设计通过（连拍第一门）；评审人对全证据链唯一拍板放行进编码（连拍第二门，设计段收口）' },
+      { id: 'execute', io: '方案 → 代码变更（自报+文件证据裁决）→ 多维评审/构建/测试 → MR（监听态）→ 合入', exitCondition: '段内循环：编码→验证→交付；各维独立判定 + Critic 终审 + 编译测试通过；测试门认可；反馈全消化 + 流水线真绿 + 合入方拍板' },
+      { id: 'merged', io: '—', exitCondition: '终态；合入后发现问题可回退执行段' },
     ],
   },
   customizable: {

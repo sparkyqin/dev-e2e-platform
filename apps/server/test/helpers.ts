@@ -130,7 +130,7 @@ export async function decide(
   action: 'approve' | 'answer' | 'rollback' | 'merge',
   extra: {
     answer?: string
-    rollbackTarget?: 'clarify' | 'architecture' | 'design' | 'test-design' | 'code' | 'verify'
+    rollbackTarget?: 'requirement' | 'architecture' | 'design' | 'test-design' | 'execute'
     reason?: string
   } = {},
 ) {

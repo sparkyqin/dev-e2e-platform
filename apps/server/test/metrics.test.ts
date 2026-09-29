@@ -32,10 +32,10 @@ function baseState(): TaskState {
     stage: 'merged',
     status: 'merged',
     stateVersion: 1,
-    currentStepIndex: 10,
+    currentStepIndex: 6,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '',
-    stageRounds: { intake: 1 },
+    stageRounds: { requirement: 1 },
     completedStages: [],
     repairRounds: 1,
     unattended: false,
@@ -61,12 +61,14 @@ function baseState(): TaskState {
 }
 
 function ev(seq: number, ts: string, kind: SemanticEvent['kind'], payload: Record<string, unknown>): SemanticEvent {
-  return { seq, ts, taskId: 'task-998', kind, stage: 'intake', actor: { type: 'system' }, payload } as unknown as SemanticEvent
+  return { seq, ts, taskId: 'task-998', kind, stage: 'requirement', actor: { type: 'system' }, payload } as unknown as SemanticEvent
 }
 
 describe('度量：computeTaskMetrics（事件流只读派生）', () => {
-  it('阶段段式累加：推进/回退重做/门等待降级均计入', () => {
+  it('阶段段式累加：推进/回退重做/门等待降级均计入（v1 旧轨事件按 alias 归一入桶）', () => {
     const s = baseState()
+    // 故意用 v1 旧轨 id 的事件流（intake/clarify/code/verify/deliver）——验证 LEGACY_STAGE_ALIAS 归一：
+    // 存量任务的历史时长不断档，与新轨任务同口径入桶（requirement/execute）
     const events: SemanticEvent[] = [
       ev(1, '2026-01-01T00:00:00.000Z', 'stage_entered', { stage: 'intake', reentry: false, round: 1 }),
       ev(2, '2026-01-01T00:00:10.000Z', 'stage_exited', { stage: 'intake', reason: 'completed', round: 1 }),
@@ -96,12 +98,10 @@ describe('度量：computeTaskMetrics（事件流只读派生）', () => {
     expect(m.ttmMs).toBe(6 * 60_000)
     expect(m.mergedAt).toBe('2026-01-01T00:06:00.000Z')
 
-    // 阶段活跃时长：intake=10s；clarify=40s（含事实门等待 30s）；architecture=90s（含降级门等待 60s）
-    expect(m.stageTimingsMs.intake).toBe(10_000)
-    expect(m.stageTimingsMs.clarify).toBe(40_000)
+    // 阶段活跃时长（旧轨归一：intake+clarify→requirement=50s；code+verify+deliver→execute=180s）
+    expect(m.stageTimingsMs.requirement).toBe(50_000)
     expect(m.stageTimingsMs.architecture).toBe(90_000)
-    expect(m.stageTimingsMs.verify).toBe(60_000)
-    expect(m.stageTimingsMs.code).toBe(30_000)
+    expect(m.stageTimingsMs.execute).toBe(180_000)
 
     // 门等待：fact×2（answer 30s + degrade 60s）、delivery×1（merge 60s）
     const fact = m.gateWaits.find((g) => g.kind === 'fact')
@@ -116,11 +116,10 @@ describe('度量：computeTaskMetrics（事件流只读派生）', () => {
     expect(m.repairRounds).toBe(1)
     expect(m.eventCount).toBe(20)
 
-    // 一次通过与阶段轮次：本用例有 1 次回退（verify→code）→ 非一次通过；code 被重做（round 2）
+    // 一次通过与阶段轮次：本用例有 1 次回退（verify→code）→ 非一次通过；code 重做轮归入 execute 桶
     expect(m.firstPass).toBe(false)
-    expect(m.stageMaxRounds.code).toBe(2)
-    expect(m.stageMaxRounds.verify).toBe(1)
-    expect(m.stageMaxRounds.intake).toBe(1)
+    expect(m.stageMaxRounds.execute).toBe(2)
+    expect(m.stageMaxRounds.requirement).toBe(1)
   })
 
   it('一次通过：零回退零修复轮直达合入', () => {
@@ -137,19 +136,19 @@ describe('度量：computeTaskMetrics（事件流只读派生）', () => {
     const m = computeTaskMetrics(s, events, Date.parse('2026-01-01T00:00:30.000Z'))
     expect(m.rollbacks).toBe(0)
     expect(m.firstPass).toBe(true)
-    expect(m.stageMaxRounds).toEqual({ intake: 1, deliver: 1 })
+    expect(m.stageMaxRounds).toEqual({ requirement: 1, execute: 1 })
   })
 
   it('未合入任务：ttmMs=null，ageMs 随当前时间增长', () => {
     const s = baseState()
     s.status = 'gate-wait'
-    s.stage = 'clarify'
+    s.stage = 'requirement'
     const events = [ev(1, '2026-01-01T00:00:00.000Z', 'stage_entered', { stage: 'intake', reentry: false, round: 1 })]
     const m = computeTaskMetrics(s, events, Date.parse('2026-01-01T00:02:00.000Z'))
     expect(m.ttmMs).toBeNull()
     expect(m.ageMs).toBe(2 * 60_000)
-    // 进行中开段计入当前阶段（intake 段至 now）
-    expect(m.stageTimingsMs.intake).toBe(2 * 60_000)
+    // 进行中开段计入当前阶段（intake 旧 id 归一到 requirement 桶，段计至 now）
+    expect(m.stageTimingsMs.requirement).toBe(2 * 60_000)
   })
 })
 
@@ -177,7 +176,7 @@ describe('度量：buildMetricsView（真实管线聚合）', () => {
     expect(mine?.stageTimingsMs['test-design']).toBeDefined()
     expect(mine?.stageTimingsMs.design).toBeDefined()
 
-    // 门等待：fact ≥ 4（澄清 + 架构 + 方案 + 测试设计）、review=1、test=1
+    // 门等待：fact ≥ 4（需求事实门 + 架构 + 方案 + 测试设计）、review=1（连拍第二门）、test=1（测试门）
     const fact = mine?.gateWaits.find((g) => g.kind === 'fact')
     const review = mine?.gateWaits.find((g) => g.kind === 'review')
     const test = mine?.gateWaits.find((g) => g.kind === 'test')
@@ -196,7 +195,7 @@ describe('度量：buildMetricsView（真实管线聚合）', () => {
     // 一次通过：任务未合入 → firstPass=false；本平台实例无已合入任务 → 汇总率为 null；阶段单轮占比可派生
     expect(mine?.firstPass).toBe(false)
     expect(view.summary.firstPassRate).toBeNull()
-    expect(view.summary.stageFirstPassRate.intake).toBe(1)
+    expect(view.summary.stageFirstPassRate.requirement).toBe(1)
     expect(view.summary.stageFirstPassRate.architecture).toBe(1)
   })
 })

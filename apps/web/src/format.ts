@@ -9,7 +9,7 @@ import type {
   StageId,
   TaskState,
 } from '@ai-platform/shared'
-import { STAGES, STAGE_ORDER } from '@ai-platform/shared'
+import { LEGACY_STAGE_LABEL, STAGES, STAGE_ORDER, toCurrentStage } from '@ai-platform/shared'
 
 export const STATUS_META: Record<TaskState['status'], { label: string; cls: string }> = {
   queued: { label: '排队中', cls: 'st-queued' },
@@ -55,12 +55,13 @@ export function fmtRel(iso: string): string {
   return `${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}`
 }
 
-export function stageLabel(stage: StageId): string {
-  return STAGES[stage]?.label ?? stage
+/** 阶段名（含 v1 旧轨 id 兜底：历程回放里的历史事件保持历史词汇） */
+export function stageLabel(stage: string): string {
+  return STAGES[stage as StageId]?.label ?? LEGACY_STAGE_LABEL[stage] ?? stage
 }
 
-export function stageShort(stage: StageId): string {
-  return STAGES[stage]?.shortLabel ?? stage
+export function stageShort(stage: string): string {
+  return STAGES[stage as StageId]?.shortLabel ?? LEGACY_STAGE_LABEL[stage] ?? stage
 }
 
 export function stageNo(stage: StageId): number {
@@ -121,12 +122,12 @@ export function renderEvent(ev: SemanticEvent): EventRender {
       return {
         icon: '▶️',
         actor: who,
-        title: `进入「${stageLabel(p.stage as StageId)}」第 ${Number(p.round ?? 1)} 轮${p.reentry ? '（回退重做）' : ''}`,
-        body: STAGES[p.stage as StageId]?.desc ?? '',
+        title: `进入「${stageLabel(String(p.stage ?? ''))}」第 ${Number(p.round ?? 1)} 轮${p.reentry ? '（回退重做）' : ''}`,
+        body: STAGES[p.stage as StageId]?.desc ?? (LEGACY_STAGE_LABEL[String(p.stage)] ? `（v1 旧轨阶段，v2 已并入「${stageLabel(toCurrentStage(String(p.stage)))}」）` : ''),
         cls: 'ev-stage',
       }
     case 'stage_exited':
-      return { icon: '⏹️', actor: who, title: `离开「${stageLabel(p.stage as StageId)}」（${p.reason ?? ''}）`, body: '', cls: 'ev-stage' }
+      return { icon: '⏹️', actor: who, title: `离开「${stageLabel(String(p.stage ?? ''))}」（${p.reason ?? ''}）`, body: '', cls: 'ev-stage' }
     case 'gate_raised':
       return { icon: '🟡', actor: who, title: `门举起：${String(p.gateKind ?? '')}`, body: truncate(String(p.question ?? ''), 300), cls: 'ev-gate' }
     case 'gate_decided':

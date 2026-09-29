@@ -136,13 +136,13 @@ describe('场景7：流水线首败 → 自动修复 → 重推 → 旧证据失
     const first = await stateOf(platform, taskId)
     const oldSha = first.mr!.sha
 
-    // 首轮流水线失败（远端真实）→ 反馈分诊 auto-fixable → 不惊动人 → 回退编码修复
+    // 首轮流水线失败（远端真实）→ 反馈分诊 auto-fixable → 不惊动人 → execute 段内回退编码修复
     const rolledBack = await waitFor(
       async () => {
         const s = await stateOf(platform, taskId)
-        return s.stage === 'code' && s.repairRounds >= 1 ? s : null
+        return s.stage === 'execute' && s.repairRounds >= 1 ? s : null
       },
-      { timeoutMs: 30_000, what: '流水线失败自动回退编码' },
+      { timeoutMs: 30_000, what: '流水线失败自动回退编码（execute 段内修复）' },
     )
     expect(rolledBack.repairRounds).toBeGreaterThanOrEqual(1)
     // 修复指令含 MR 反馈（持久证据：user_message 事件留痕；live 指令会被 codeWorker 即刻消费）
@@ -220,13 +220,13 @@ describe('场景8：并发调度（多任务槽位竞争，门挂起释放槽）
     const firstSuspend = Math.min(Date.parse(aGate.ts), Date.parse(bGate.ts))
     expect(Date.parse(cSession.ts)).toBeGreaterThanOrEqual(firstSuspend)
 
-    // 收尾：c 至少推进到澄清（fast 剧本 fact 门 300ms 降级是瞬态，不可断言 raised）
+    // 收尾：c 至少完成基线建立并推进（v2：requirement 内分解跑起或门举起，或已进入后续段）
     await waitFor(
       async () => {
         const s = await stateOf(platform, c.taskId)
-        return ['clarify', 'architecture', 'design', 'test-design', 'review', 'code', 'verify', 'deliver', 'merged'].includes(s.stage) ? s : null
+        return ['architecture', 'design', 'test-design', 'execute', 'merged'].includes(s.stage) || s.gate?.kind === 'fact' ? s : null
       },
-      { what: 'c 已推进过 intake' },
+      { what: 'c 已推进过基线建立' },
     )
   }, 60_000)
 })
@@ -247,7 +247,7 @@ describe('场景9 附加：重启恢复（状态在文件，不丢状态）', ()
     const recovered = await p2.store.load(taskId)
     expect(recovered.status).toBe('gate-wait')
     expect(recovered.gate?.kind).toBe('fact')
-    expect(recovered.stage).toBe('clarify')
+    expect(recovered.stage).toBe('requirement')
 
     // 恢复后仍可决策并继续推进
     const { decideGate } = await import('../src/orchestrator/gates.js')

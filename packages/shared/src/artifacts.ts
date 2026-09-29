@@ -48,17 +48,13 @@ export interface Annotation {
   resolved: boolean
 }
 
-/** 各阶段产物主权（场景3：拍板后主权移交开发） */
+/** 各阶段产物主权（场景3：拍板后主权移交开发；测试设计段收口的评审报告主权在评审人） */
 export const STAGE_SOVEREIGNTY: Record<StageId, string> = {
-  intake: 'owner',
-  clarify: 'owner',
+  requirement: 'owner',
   architecture: 'architect',
   design: 'designer',
   'test-design': 'tse',
-  review: 'reviewer',
-  code: 'owner',
-  verify: 'owner',
-  deliver: 'owner',
+  execute: 'owner',
   merged: 'owner',
 }
 

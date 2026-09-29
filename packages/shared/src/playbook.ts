@@ -43,6 +43,6 @@ export interface Playbook {
 export const DEFAULT_REVIEW_DIMENSIONS = ['功能正确性', '架构合理性', '安全性', '性能', '可维护性', '测试充分性']
 
 export function playbookRollbackTargets(pb: Playbook): RollbackTarget[] {
-  // 声明式回退可选目标由模板约束（advisory 风格不允许直接回退驳回，只提建议）
-  return pb.customizable.gateVetoStyle === 'advisory' ? ['code'] : ['clarify', 'design', 'code', 'verify']
+  // 声明式回退可选目标由模板约束（advisory 风格不允许直接回退驳回，只提建议；其余=设计段全谱 + 执行段修复模式）
+  return pb.customizable.gateVetoStyle === 'advisory' ? ['execute'] : ['requirement', 'architecture', 'design', 'test-design', 'execute']
 }
