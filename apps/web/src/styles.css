@@ -389,6 +389,35 @@ a { color: var(--brand); text-decoration: none; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
 .check.sm { font-size: 11.5px; }
 .check input { width: 15px; height: 15px; }
+.field-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+
+/* 新建任务：编号分区（mae-flow 模式：常用路径一眼见核心字段） */
+.form-sec { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); font-weight: 700; margin-top: 5px; }
+.form-sec:first-child { margin-top: 0; }
+.form-sec i { font-style: normal; width: 17px; height: 17px; border-radius: 5px; background: #eef1fd; color: var(--brand); font-size: 10.5px; display: grid; place-items: center; flex: none; }
+.form-sec .sec-pill { font-style: normal; font-size: 10px; font-weight: 600; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 4px; line-height: 15px; }
+.req-star { color: var(--err); font-style: normal; }
+
+/* 开发方式卡片单选（描述可见可比较，替代挤在 option 里的下拉） */
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-card { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 9px 11px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; font-family: inherit; }
+.mode-card:hover { border-color: var(--brand); }
+.mode-card.on { border-color: var(--brand); background: #f4f6fe; box-shadow: 0 0 0 1px var(--brand); }
+.mode-card strong { font-size: 12.5px; color: var(--ink); }
+.mode-card.on strong { color: var(--brand); }
+.mode-card small { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+
+/* 行内指路式校验（替代 toast 报错） */
+.field-err input, .field-err textarea { border-color: var(--err); }
+.err-msg { font-style: normal; font-size: 11px; color: var(--err); }
+
+/* 草稿自动保存指示 */
+.draft-chip { margin-left: auto; margin-right: 8px; display: flex; align-items: center; gap: 9px; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.draft-chip .saved { color: var(--ok); }
+
+/* 高级选项折叠内容 */
+.adv-fold .adv-body { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.foot-hint { margin-right: auto; font-size: 11px; color: var(--ink-3); }
 
 /* ---------- 任务工作台 ---------- */
 .taskview { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
