@@ -140,24 +140,33 @@ export class ArtifactManager {
     anchor?: string
     author: string
     authorName: string
-    text: string
+    text?: string
     replyTo?: string
+    annotationId?: string
     resolve?: boolean
   }): Promise<Annotation> {
     const list = await this.listAnnotations()
+
+    // 解决 / 重开：按 annotationId 定位（修复：旧实现误用 artifactPath 查找，永不命中）
+    if (input.resolve !== undefined) {
+      const target = list.find((a) => a.id === input.annotationId)
+      if (!target) throw new Error(`批注不存在：${input.annotationId ?? '（未提供 annotationId）'}`)
+      target.resolved = input.resolve
+      await writeJson(this.annotationsFile(), list)
+      return target
+    }
+
+    // 回复：追加进目标批注的讨论串
     if (input.replyTo) {
+      if (!input.text) throw new Error('回复内容不能为空')
       const target = list.find((a) => a.id === input.replyTo)
       if (!target) throw new Error(`批注不存在：${input.replyTo}`)
       target.replies.push({ id: newId('ann'), author: input.author, authorName: input.authorName, text: input.text, ts: nowIso() })
       await writeJson(this.annotationsFile(), list)
       return target
     }
-    if (input.resolve) {
-      const target = list.find((a) => a.id === input.artifactPath)
-      target && (target.resolved = true)
-      await writeJson(this.annotationsFile(), list)
-      return target as Annotation
-    }
+
+    if (!input.text) throw new Error('批注内容不能为空')
     const ann: Annotation = {
       id: newId('ann'),
       artifactPath: input.artifactPath,

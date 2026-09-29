@@ -1,7 +1,8 @@
 /**
  * 材料区：产物三分区（process 不入 git / delivery 入 git / knowledge 可回流）
  * - 点击查看内容（只读；人走批注，产物写入仅由引擎/平台执行）
- * - 原位批注（讨论串 + 解决标记）
+ * - 查看器带行号：点行号锚定批注到具体行（锚点不再是裸输入框）
+ * - 原位批注：讨论串回复 + 解决/重开（annotationId 定位）+ 锚点跳转高亮
  * - 契约单源漂移警示
  * - 知识注入摘要（OKL 三层实际塞了什么）
  */
@@ -21,6 +22,8 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
   const [content, setContent] = useState<string | null>(null)
   const [annText, setAnnText] = useState('')
   const [annAnchor, setAnnAnchor] = useState('')
+  const [replyTo, setReplyTo] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
   const [busy, setBusy] = useState(false)
   const state = detail.state
 
@@ -47,6 +50,19 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
 
   const annotationsFor = (path: string): Annotation[] => detail.annotations.filter((a) => a.artifactPath === path)
 
+  /** 点行号锚定/取消锚定（锚点即行号，所见即所得） */
+  const toggleAnchor = (n: number): void => {
+    const tag = `L${n}`
+    setAnnAnchor((prev) => (prev === tag ? '' : tag))
+  }
+
+  /** 锚点标签点击 → 定位到该行（滚动 + 保持高亮） */
+  const jumpTo = (anchor: string): void => {
+    setAnnAnchor(anchor)
+    const m = /^L(\d+)$/.exec(anchor)
+    if (m) document.getElementById(`ln-${m[1]}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+
   const annotate = async (): Promise<void> => {
     if (!openPath || !annText.trim()) return
     setBusy(true)
@@ -55,7 +71,7 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
       setAnnText('')
       setAnnAnchor('')
       await refreshDetail()
-      pushToast('批注已留（原位讨论，随产物路径锚定）', 'ok')
+      pushToast(`批注已留${annAnchor ? `（锚定 ${annAnchor}）` : ''}`, 'ok')
     } catch (e) {
       pushToast((e as Error).message, 'err')
     } finally {
@@ -66,7 +82,22 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
   const resolve = async (a: Annotation): Promise<void> => {
     setBusy(true)
     try {
-      await api.annotate(taskId, { artifactPath: a.artifactPath, text: a.text, asUserId: me.userId, resolve: !a.resolved })
+      await api.annotate(taskId, { artifactPath: a.artifactPath, annotationId: a.id, resolve: !a.resolved, asUserId: me.userId })
+      await refreshDetail()
+    } catch (e) {
+      pushToast((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const reply = async (a: Annotation): Promise<void> => {
+    if (!replyText.trim()) return
+    setBusy(true)
+    try {
+      await api.annotate(taskId, { artifactPath: a.artifactPath, text: replyText, replyTo: a.id, asUserId: me.userId })
+      setReplyText('')
+      setReplyTo(null)
       await refreshDetail()
     } catch (e) {
       pushToast((e as Error).message, 'err')
@@ -123,25 +154,53 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
               ✕
             </button>
           </div>
-          <pre>{content ?? '读取中…'}</pre>
+          <div className="viewer-lines">
+            {(content ?? '读取中…').split('\n').map((line, i) => {
+              const n = i + 1
+              const on = annAnchor === `L${n}`
+              return (
+                <div key={n} id={`ln-${n}`} className={`vline ${on ? 'hl' : ''}`}>
+                  <button className={`ln ${on ? 'on' : ''}`} onClick={() => toggleAnchor(n)} title="锚定批注到此行">
+                    {n}
+                  </button>
+                  <span className="lc">{line === '' ? ' ' : line}</span>
+                </div>
+              )
+            })}
+          </div>
           <div className="viewer-ann">
             <h5>
               批注（{annotationsFor(openPath).length}）· 当前主权角色 {sovereignNow}，非主权方只读+批注
             </h5>
             <div className="ann-new">
-              <input placeholder="锚点（小节标题/行号，可选）" value={annAnchor} onChange={(e) => setAnnAnchor(e.target.value)} />
+              {annAnchor ? (
+                <span className="anchor-chip">
+                  锚定 {annAnchor}
+                  <button onClick={() => setAnnAnchor('')} title="清除锚点">
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <small className="anchor-hint">点上方行号，可把批注锚定到具体行（可选）</small>
+              )}
               <textarea rows={2} placeholder={`以「${me.name}」身份留批注…`} value={annText} onChange={(e) => setAnnText(e.target.value)} />
               <button className="btn sm primary" disabled={busy || !annText.trim()} onClick={() => void annotate()}>
                 留批注
               </button>
             </div>
+            {annotationsFor(openPath).length === 0 && <div className="viewer-empty">还没有批注。点行号锚定 + 写下第一条，或直接留言。</div>}
             {annotationsFor(openPath).map((a) => (
               <div key={a.id} className={`ann-item ${a.resolved ? 'resolved' : ''}`}>
                 <div className="ann-line">
                   <strong>{a.authorName}</strong>
-                  {a.anchor && <span className="tag">{a.anchor}</span>}
+                  {a.anchor && (
+                    <button className="tag anchor-jump" onClick={() => jumpTo(a.anchor!)} title="跳到锚定行">
+                      {a.anchor}
+                    </button>
+                  )}
+                  {a.resolved && <span className="tag ok">已解决</span>}
                   <time>{fmtTime(a.ts)}</time>
-                  <button className="link" onClick={() => void resolve(a)}>
+                  <button className="link" disabled={busy} onClick={() => void resolve(a)}>
                     {a.resolved ? '重开' : '标记解决'}
                   </button>
                 </div>
@@ -154,6 +213,35 @@ export default function ArtifactsPanel({ taskId, detail, refreshDetail, focusPat
                       </div>
                     ))}
                   </div>
+                )}
+                {replyTo === a.id ? (
+                  <div className="ann-reply-box">
+                    <textarea rows={2} placeholder={`回复 ${a.authorName}…`} value={replyText} onChange={(e) => setReplyText(e.target.value)} />
+                    <div className="reply-actions">
+                      <button
+                        className="btn sm"
+                        onClick={() => {
+                          setReplyTo(null)
+                          setReplyText('')
+                        }}
+                      >
+                        取消
+                      </button>
+                      <button className="btn sm primary" disabled={busy || !replyText.trim()} onClick={() => void reply(a)}>
+                        回复
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="link reply-btn"
+                    onClick={() => {
+                      setReplyTo(a.id)
+                      setReplyText('')
+                    }}
+                  >
+                    回复
+                  </button>
                 )}
               </div>
             ))}

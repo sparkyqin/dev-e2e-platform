@@ -175,9 +175,14 @@ export type InstructionRequest = z.infer<typeof instructionSchema>
 export const annotationSchema = z.object({
   artifactPath: z.string(),
   anchor: z.string().optional(),
-  text: z.string().min(1),
+  /** 批注/回复正文；解决/重开模式可省 */
+  text: z.string().min(1).optional(),
   asUserId: z.string(),
+  /** 回复目标批注 id */
   replyTo: z.string().optional(),
+  /** 解决/重开目标批注 id（配合 resolve） */
+  annotationId: z.string().optional(),
+  /** true=标记解决 · false=重开 */
   resolve: z.boolean().optional(),
 })
 export type AnnotationRequest = z.infer<typeof annotationSchema>

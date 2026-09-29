@@ -77,4 +77,30 @@ describe('原位批注', () => {
     expect(list).toHaveLength(1)
     expect(list[0].replies).toHaveLength(1)
   })
+
+  it('解决 / 重开：按 annotationId 定位（回归：旧实现误用 artifactPath 查找，永不命中）', async () => {
+    const ws = await tmpWs()
+    const am = new ArtifactManager(ws)
+    const ann = await am.addAnnotation({ artifactPath: 'delivery/spec.md', anchor: 'L12', author: 'zhaolei', authorName: '赵磊', text: '验收标准缺边界' })
+    const r1 = await am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'zhaolei', authorName: '赵磊', annotationId: ann.id, resolve: true })
+    expect(r1.resolved).toBe(true)
+    const r2 = await am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'zhaolei', authorName: '赵磊', annotationId: ann.id, resolve: false })
+    expect(r2.resolved).toBe(false)
+    // resolve 落盘
+    expect((await am.listAnnotations())[0].resolved).toBe(false)
+  })
+
+  it('解决不存在的批注 → 明确报错（不再静默返回 undefined）', async () => {
+    const ws = await tmpWs()
+    const am = new ArtifactManager(ws)
+    await expect(am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'x', authorName: 'x', annotationId: 'ann-nope', resolve: true })).rejects.toThrow('批注不存在')
+  })
+
+  it('空文本守卫：新批注与回复必须有内容（text 可选但非 resolve 模式必填）', async () => {
+    const ws = await tmpWs()
+    const am = new ArtifactManager(ws)
+    const ann = await am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'zhaolei', authorName: '赵磊', text: '验收标准缺边界' })
+    await expect(am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'x', authorName: 'x' })).rejects.toThrow('批注内容不能为空')
+    await expect(am.addAnnotation({ artifactPath: 'delivery/spec.md', author: 'x', authorName: 'x', text: '', replyTo: ann.id })).rejects.toThrow('回复内容不能为空')
+  })
 })

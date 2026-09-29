@@ -531,7 +531,14 @@ a { color: var(--brand); text-decoration: none; }
 .artifact-viewer { border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; }
 .viewer-head { display: flex; align-items: center; justify-content: space-between; background: #f5f7fc; padding: 7px 11px; border-bottom: 1px solid var(--line); }
 .viewer-head code { background: none; padding: 0; }
-.artifact-viewer > pre { padding: 11px 13px; max-height: 380px; overflow: auto; background: #fff; }
+.viewer-lines { max-height: 380px; overflow: auto; background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
+.vline { display: grid; grid-template-columns: 40px 1fr; }
+.vline:hover { background: #f7f9fd; }
+.vline.hl { background: #fdf6e4; }
+.vline .ln { text-align: right; padding-right: 10px; color: var(--ink-3); background: none; border: 0; cursor: pointer; font: inherit; user-select: none; }
+.vline .ln:hover { color: var(--brand); font-weight: 700; }
+.vline .ln.on { color: var(--brand); font-weight: 700; }
+.vline .lc { white-space: pre; tab-size: 4; padding-right: 12px; }
 .viewer-ann { border-top: 1px solid var(--line); padding: 10px 12px; background: #fbfcfe; }
 .viewer-ann h5 { font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
 .ann-new { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -541,6 +548,18 @@ a { color: var(--brand); text-decoration: none; }
 .ann-line { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink-3); }
 .ann-line .link { margin-left: auto; }
 .ann-replies { margin-top: 7px; border-left: 2px solid var(--line); padding-left: 9px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+
+/* 批注交互：锚点 chip / 跳转 / 回复框 / 已解决徽标 */
+.anchor-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--brand); background: #eef1fd; border-radius: 4px; padding: 2px 8px; width: fit-content; }
+.anchor-chip button { border: 0; background: none; cursor: pointer; color: inherit; padding: 0; font-size: 11px; }
+.anchor-hint { color: var(--ink-3); }
+.tag.anchor-jump { cursor: pointer; font-family: inherit; }
+.tag.ok { background: #e8f6ee; color: #157347; }
+.viewer-empty { font-size: 12px; color: var(--ink-3); padding: 2px 0 8px; }
+.ann-reply-box { display: flex; gap: 7px; margin-top: 7px; align-items: flex-start; }
+.ann-reply-box textarea { flex: 1; }
+.reply-actions { display: flex; flex-direction: column; gap: 5px; }
+.link.reply-btn { font-size: 11px; margin-top: 5px; }
 .injections h4 { margin-top: 4px; }
 .inj-item summary { cursor: pointer; font-size: 12px; color: var(--ink-2); padding: 4px 0; }
 .inj-item ul { list-style: none; padding: 0 0 0 14px; margin: 4px 0; font-size: 11.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }

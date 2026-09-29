@@ -334,6 +334,7 @@ export function registerRoutes(app: FastifyInstance, platform: Platform, auth: A
         authorName: me.name,
         text: body.text,
         replyTo: body.replyTo,
+        annotationId: body.annotationId,
         resolve: body.resolve,
       })
       return reply.code(201).send(ann satisfies Annotation)
