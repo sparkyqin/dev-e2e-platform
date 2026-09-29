@@ -912,7 +912,7 @@ a { color: var(--brand); text-decoration: none; }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1280px) {
-  .task-cols { grid-template-columns: 260px minmax(0, 1fr) 380px; }
+  .task-cols { grid-template-columns: minmax(0, 1fr) 340px; }
 }
 @media (max-width: 1080px) {
   .hall { grid-template-columns: 1fr; }
